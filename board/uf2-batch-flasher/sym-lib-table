@@ -1,0 +1,6 @@
+(sym_lib_table
+  (version 7)
+  (lib (name "MCU_RaspberryPi_and_Boards")(type "KiCad")(uri "${KIPRJMOD}/imports/RP-Pico Libraries/MCU_RaspberryPi_and_Boards.kicad_sym")(options "")(descr ""))
+  (lib (name "onsemi-FairChild")(type "KiCad")(uri "${KIPRJMOD}/imports/onsemi-FairChild.kicad_sym")(options "")(descr ""))
+  (lib (name "Project")(type "KiCad")(uri "${KIPRJMOD}/Library/project.kicad_sym")(options "")(descr ""))
+)
