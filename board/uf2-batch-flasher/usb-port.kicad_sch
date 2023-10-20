@@ -4,6 +4,16 @@
 
   (paper "A4")
 
+  (title_block
+    (title "UF2 Batch Flasher")
+    (date "2023-10-20")
+    (rev "0.1")
+    (company "nbp.name")
+    (comment 2 "as well as some ESD protection on the data lines.")
+    (comment 3 "This page contains a single USB port, with the essential components needed to enable it,")
+    (comment 4 "UF2 Batch Flasher is a USB hub for flashing USB devices")
+  )
+
   (lib_symbols
     (symbol "Connector:USB_A" (pin_names (offset 1.016)) (in_bom yes) (on_board yes)
       (property "Reference" "J" (at -5.08 11.43 0)

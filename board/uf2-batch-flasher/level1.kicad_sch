@@ -4,6 +4,16 @@
 
   (paper "A4")
 
+  (title_block
+    (title "UF2 Batch Flasher")
+    (date "2023-10-20")
+    (rev "0.1")
+    (company "nbp.name")
+    (comment 2 "are dispatched to the leaves of the tree of USB devices.")
+    (comment 3 "This is the second level, where select flags and data lines")
+    (comment 4 "UF2 Batch Flasher is a USB hub for flashing USB devices")
+  )
+
   (lib_symbols
     (symbol "74xx:74HC238" (in_bom yes) (on_board yes)
       (property "Reference" "U" (at -7.62 13.97 0)
