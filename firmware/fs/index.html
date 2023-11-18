@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html>
+<body>
+  <header>
+    <h1>UF2 Batch Flasher</h1>
+    <!-- Every image sent using this form is actually sent 64 times, once per device to
+         be flashed. The reason for doing so is such that we do not consume the flash
+         space of the flashing device and instead stream through the HTTP request the
+         image which has to be sent to the flashed device. -->
+  </div>
+  </header>
+  <div id="status">
+    <ol id="usb_status_list" start="0"></ol>
+  </div>
+  <div id="controls">
+    <button id="flash_all" type="button">Flash all Devices</button>
+  </div>
+  <div id="dropzone">
+    <!-- <input type="file" id="mcu_image" name="mcu_image" accept=".uf2,application/uf2,binary/uf2" /> -->
+    <p>Drag and drop files to be flashed on the USB devices</p>
+  </div>
+  <code id="console"></code>
+  <footer></footer>
+</body>
+<head lang="en">
+  <meta charset="utf-8">
+  <title>UF2 Batch Flasher</title>
+  <style>
+   * { box-sizing: border-box; }
+   body {
+     display: grid;
+     grid-gap: 20px;
+     grid-template-columns: 120px auto auto 120px;
+     grid-template-areas:
+       "header  header  header"
+       "status dropzone console"
+       "status controls console"
+       "footer  footer  footer";
+   }
+   .status { grid-area: status; }
+   .controls { grid-area: controls; }
+   .dropzone {
+     grid-area: dropzone;
+     border: 5px dashed blue;
+     width: 200px;
+     height: 100px;
+   }
+   .console {
+     grid-area: console;
+     font-family: monospace;
+     white-space: pre-wrap;
+   }
+   header { grid-area: header; }
+   footer { grid-area: footer; }
+  </style>
+  <script type="importmap">
+   {
+     "imports": {
+       // "path or name": "url",
+     }
+   }
+  </script>
+  <script src="./module.index.js" type="module"></script>
+</head>
+</html>
