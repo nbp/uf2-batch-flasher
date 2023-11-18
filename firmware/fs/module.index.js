@@ -11,6 +11,12 @@ function console_log(...args) {
   console.innerText += "web: " + args.map(a => a.toString()).join(" ") + "\n";
 }
 
+function asyncTimeout(timeout, msg) {
+  return new Promise((resolve, reject) => {
+    setTimeout(reject, timeout, msg);
+  });
+}
+
 // Keep this list in sync with usb_host.h
 let usb_status = [
   "DEVICE_UNKNOWN",
@@ -84,9 +90,12 @@ async function select_device(device, timeout) {
     };
   });
   await update_status(await fetch(`/select.cgi?active_device=${device}`));
-  let timeout_trigger = new Promise((resolve, reject) => {
-    setTimeout(reject, timeout, "Unable to use USB device as a Mass Storage");
-  });
+
+  // If the device cannot be selected, we want to fail in order to switch to the
+  // next USB device. This timeout is here to make us switch if the USB device
+  // is unresponsive.
+  let timeout_trigger =
+    asyncTimeout(timeout, "Unable to use USB device as a Mass Storage");
   await Promise.race([is_selected, timeout_trigger]);
 }
 
@@ -95,24 +104,47 @@ async function send_uf2(name, content) {
 
   for (let device = 0; device < USB_DEVICES; device++) {
     try {
-    // Request to switch to the next flashable USB port. the reply from the
-    // Pico would tell us whether to send or not the uf2 image again.
-    await select_device(device, 500);
+      // Request to switch to the next flashable USB port. the reply from the
+      // Pico would tell us whether to send or not the uf2 image again.
+      await select_device(device, 500);
 
-    // Make a single request which would be split into multiple by TCP protocol
-    // and then throttled by LwIP based on how fast we can forward the content to
-    // the USB device.
-    update_status(await fetch("/flash", {
-      method: "POST",
-      mode: "same-origin",
-      cache: "no-cache",
-      credentials: "same-origin",
-      headers: {
-        "Content-Type": "application/uf2",
-        "Content-Length": content.byteLength,
-      },
-      body: content
-    }));
+      let is_flashed = new Promise((resolve, reject) => {
+        cond_status = function wait_msc_mount(status) {
+          // Reject the promise in case of error.
+          if (status[device] & 0x10) {
+            is_selected.reject(usb_status[status[device] & 0x1f]);
+            return true;
+          }
+          // Wait until the device is flashed completely.
+          if ((status[device] & 0x1f) == 8) {
+            is_selected.resolve(usb_status[status[device] & 0x1f]);
+          }
+          return false;
+        };
+      });
+
+      // Make a single request which would be split into multiple by TCP
+      // protocol and then throttled by LwIP based on how fast we can forward
+      // the content to the USB device.
+      await update_status(await fetch("/flash", {
+        method: "POST",
+        mode: "same-origin",
+        cache: "no-cache",
+        credentials: "same-origin",
+        headers: {
+          "Content-Type": "application/uf2",
+          "Content-Length": content.byteLength,
+        },
+        body: content
+      }));
+
+      // Flashing the device takes time, and the previous request only completes
+      // once the POST buffer is full, which only implies that everything has
+      // been queued, not flashed. Wait 500ms at most before assuming that an
+      // unreported error occured.
+      let timeout_trigger =
+          asyncTimeout(500, "Flashing process incomplete.");
+      await Promise.race([is_flashed, timeout_trigger]);
     } catch(e) {
       console_log(`Unable to flash device at USB port ${device}.`);
     }
