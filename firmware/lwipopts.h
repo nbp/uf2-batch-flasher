@@ -7,8 +7,18 @@
 // Running on the RP2040 without an operating system.
 #define NO_SYS 1
 
-// Debugging/Statistics
-#define LWIP_STATS 0
+//#if DEBUG
+#define LWIP_DEBUG                  1
+#define LWIP_STATS                  1
+#define LWIP_STATS_DISPLAY          1
+#define IP_DEBUG                    LWIP_DBG_ON
+#define TCP_DEBUG                   LWIP_DBG_ON
+#define HTTPD_DEBUG                 LWIP_DBG_ON
+#define HTTPD_DEBUG_TIMING          LWIP_DBG_ON
+#define LWIP_DBG_TYPES_ON           LWIP_DBG_ON
+// (LWIP_DBG_TRACE|LWIP_DBG_STATE|LWIP_DBG_FRESH|LWIP_DBG_HALT)
+#define LWIP_DBG_MIN_LEVEL          LWIP_DBG_LEVEL_ALL
+//#endif
 
 // httpd_opts. https://www.nongnu.org/lwip/2_1_x/httpd__opts_8h.html
 
@@ -58,12 +68,6 @@
 #define DHCP_DOES_ARP_CHECK         0
 #define LWIP_DHCP_DOES_ACD_CHECK    0
 
-#ifndef NDEBUG
-#define LWIP_DEBUG                  1
-#define LWIP_STATS                  1
-#define LWIP_STATS_DISPLAY          1
-#endif
-
 // ------ Enable HTTP server.
 #define LWIP_HTTPD 1
 
@@ -74,8 +78,8 @@
 // generated output. One of the reason being that json does not allow comments.
 #define LWIP_HTTPD_SSI_INCLUDE_TAG   0
 
-// Allow tags to be replaced by content which can be as big as 4096 bytes.
-// #define LWIP_HTTPD_MAX_TAG_INSERT_LEN 8192
+// Allow tags to be replaced by content which can be as big as ...
+#define LWIP_HTTPD_MAX_TAG_INSERT_LEN 8192
 
 // ------ Process query dynamically.
 #define LWIP_HTTPD_CGI 1

@@ -19,6 +19,13 @@ add_compile_options(-Wall
 
 project(uf2-batch-flasher)
 
+if(CMAKE_BUILD_TYPE EQUAL Debug)
+  target_compile_definitions(uf2-batch-flasher PRIVATE
+    DEBUG=1
+    CFG_TUSB_DEBUG=3
+  )
+endif()
+
 # We rely on the Pico W to provide a Web interface which is capable of storing
 # the image to be flashed and streaming it for each board to be flashed intead
 # of running over the cycles of the flash memory which is on the Pico W board.
