@@ -7,18 +7,18 @@
 // Running on the RP2040 without an operating system.
 #define NO_SYS 1
 
-//#if DEBUG
+#ifndef NDEBUG
 #define LWIP_DEBUG                  1
 #define LWIP_STATS                  1
 #define LWIP_STATS_DISPLAY          1
-#define IP_DEBUG                    LWIP_DBG_ON
-#define TCP_DEBUG                   LWIP_DBG_ON
+#define IP_DEBUG                    LWIP_DBG_OFF
+#define TCP_DEBUG                   LWIP_DBG_OFF
 #define HTTPD_DEBUG                 LWIP_DBG_ON
 #define HTTPD_DEBUG_TIMING          LWIP_DBG_ON
 #define LWIP_DBG_TYPES_ON           LWIP_DBG_ON
 // (LWIP_DBG_TRACE|LWIP_DBG_STATE|LWIP_DBG_FRESH|LWIP_DBG_HALT)
 #define LWIP_DBG_MIN_LEVEL          LWIP_DBG_LEVEL_ALL
-//#endif
+#endif
 
 // httpd_opts. https://www.nongnu.org/lwip/2_1_x/httpd__opts_8h.html
 
@@ -105,6 +105,5 @@
 // Generate HTML headers as part of makefsdata instead of generating them on
 // demand, in order to support proper content type for json files.
 #define LWIP_HTTPD_DYNAMIC_HEADERS   0
-
 
 #endif // LWIP_OPTS_H

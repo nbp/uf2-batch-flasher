@@ -17,7 +17,7 @@
 #endif
 
 #ifndef CFG_TUSB_DEBUG
-#ifdef DEBUG
+#ifndef NDEBUG
 #define CFG_TUSB_DEBUG        3
 #else
 #define CFG_TUSB_DEBUG        0

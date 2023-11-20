@@ -1,5 +1,45 @@
 <!DOCTYPE html>
 <html>
+  <head lang="en">
+    <meta charset="utf-8">
+    <title>UF2 Batch Flasher</title>
+    <style>
+     * { box-sizing: border-box; }
+     body {
+       display: grid;
+       grid-gap: 20px;
+       grid-template-columns: 120px auto auto 120px;
+       grid-template-areas:
+         "header  header  header"
+         "status dropzone console"
+         "status controls console"
+         "footer  footer  footer";
+     }
+     .status { grid-area: status; }
+     .controls { grid-area: controls; }
+     .dropzone {
+       grid-area: dropzone;
+       border: 5px dashed blue;
+       width: 200px;
+       height: 100px;
+     }
+     .console {
+       grid-area: console;
+       font-family: monospace;
+       white-space: pre-wrap;
+     }
+     header { grid-area: header; }
+     footer { grid-area: footer; }
+    </style>
+    <script type="importmap">
+     {
+       "imports": {
+         "path_or_name": "https://some_path_or.name/module.js"
+       }
+     }
+    </script>
+    <script src="./module.index.js" type="module"></script>
+  </head>
 <body>
   <header>
     <h1>UF2 Batch Flasher</h1>
@@ -22,44 +62,4 @@
   <code id="console"></code>
   <footer></footer>
 </body>
-<head lang="en">
-  <meta charset="utf-8">
-  <title>UF2 Batch Flasher</title>
-  <style>
-   * { box-sizing: border-box; }
-   body {
-     display: grid;
-     grid-gap: 20px;
-     grid-template-columns: 120px auto auto 120px;
-     grid-template-areas:
-       "header  header  header"
-       "status dropzone console"
-       "status controls console"
-       "footer  footer  footer";
-   }
-   .status { grid-area: status; }
-   .controls { grid-area: controls; }
-   .dropzone {
-     grid-area: dropzone;
-     border: 5px dashed blue;
-     width: 200px;
-     height: 100px;
-   }
-   .console {
-     grid-area: console;
-     font-family: monospace;
-     white-space: pre-wrap;
-   }
-   header { grid-area: header; }
-   footer { grid-area: footer; }
-  </style>
-  <script type="importmap">
-   {
-     "imports": {
-       // "path or name": "url",
-     }
-   }
-  </script>
-  <script src="./module.index.js" type="module"></script>
-</head>
 </html>

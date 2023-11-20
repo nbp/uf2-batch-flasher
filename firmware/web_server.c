@@ -74,11 +74,18 @@ void cgi_init() {
 // ---------------------------------------------------------
 //  Dynamically Generated Content (SSI)
 
+#define SSI_TAGS(_) \
+  _(sts)            \
+  _(out)
+
+#define AS_STRING(name) #name ,
 const char *ssi_tags[] = {
-#define SSI_TAG__STS 0
-  "sts", // ss0
-#define SSI_TAG__OUT 1
-  "out"  // 1
+  SSI_TAGS(AS_STRING)
+};
+
+#define AS_ENUM(name) SSI_TAG__##name ,
+enum {
+  SSI_TAGS(AS_ENUM)
 };
 
 // The SSI handler intercept and substitute tags in files which are sent as a
@@ -89,35 +96,40 @@ uint16_t ssi_handler(int index, char *insert_at, int ins_len) {
   size_t insert_len = (size_t) ins_len;
   int out_len = 0;
   int inc_len = 0;
+#ifndef NDEBUG
+  printf("SSI handler called for %s\n", ssi_tags[index]);
+#endif
   switch (index) {
   // Used in status.json
-  case SSI_TAG__STS: {
+  case SSI_TAG__sts: {
     // Generate an array of integer where each index corresponds to one USB
     // device which can be selected by the USB host, and each value corresponds
     // of the last status code recorded while attempting to flash the device.
     inc_len = snprintf(insert_at, insert_len, "[");
-    out_len += out_len;
-    insert_at += out_len;
+    out_len += inc_len;
+    insert_at += inc_len;
     insert_len -= (size_t) inc_len;
     size_t device = 0;
     for (; device < USB_DEVICES - 1; device++) {
-      inc_len += snprintf(insert_at, insert_len, "%d,",
-                          get_usb_device_status(device));
-      out_len += out_len;
-      insert_at += out_len;
+      inc_len = snprintf(insert_at, insert_len, "%d,",
+                         get_usb_device_status(device));
+      out_len += inc_len;
+      insert_at += inc_len;
       insert_len -= (size_t) inc_len;
     }
-    inc_len += snprintf(insert_at, insert_len, "%d]",
-                        get_usb_device_status(device));
-    out_len += out_len;
-    insert_at += out_len;
+    inc_len = snprintf(insert_at, insert_len, "%d]",
+                       get_usb_device_status(device));
+    out_len += inc_len;
+    insert_at += inc_len;
     insert_len -= (size_t) inc_len;
     break;
   }
-  case SSI_TAG__OUT: {
+  case SSI_TAG__out: {
     out_len = stdout_ssi(insert_at, ins_len);
     break;
   }
+  default:
+    return HTTPD_SSI_TAG_UNKNOWN;
   }
   LWIP_ASSERT("Sane length", (int) (uint16_t) out_len == out_len);
   return (uint16_t) out_len;
@@ -127,6 +139,7 @@ void ssi_init() {
   for (size_t t = 0; t < LWIP_ARRAYSIZE(ssi_tags); t++) {
     LWIP_ASSERT("Tags are restricted to LWIP_HTTPD_MAX_TAG_NAME_LEN",
                 strlen(ssi_tags[t]) <= LWIP_HTTPD_MAX_TAG_NAME_LEN);
+    printf("Register SSI tag: %s (%d)\n", ssi_tags[t], t);
   }
   http_set_ssi_handler(ssi_handler, ssi_tags, LWIP_ARRAYSIZE(ssi_tags));
 }

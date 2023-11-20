@@ -3,9 +3,11 @@
 // Display the output produced by the board and the output produced by this
 // script on the console panel displayed on the page.
 async function update_stdout() {
-  let out = await fetch("/stdout.txt");
+  let out = await fetch("/stdout.ssi");
+  out = await out.text();
   let console = document.getElementById("console");
-  console.innerText += out;
+  let text = out.split('\n').map(line => `pico: ${line}\n`).join("");
+  console.innerText += text;
 }
 function console_log(...args) {
   console.innerText += "web: " + args.map(a => a.toString()).join(" ") + "\n";
@@ -210,9 +212,15 @@ function setup() {
   // Poll the Pico every 100ms to collect new status information about the USB
   // devices. This is useful to unlock promises which are waiting for changes in
   // the state of USB devices.
-  setInterval(update_status, 100, undefined);
+  //setInterval(update_status, 100, undefined);
+  //setInterval(update_stdout, 250, undefined);
 }
 
 setup();
 
-export {}
+window.update_stdout = update_stdout;
+window.update_status = update_status;
+export {
+  update_stdout,
+  update_status
+}

@@ -429,9 +429,9 @@ void baud_rate_set_cb(struct tuh_xfer_s *unused)
   report_status(DEVICE_BOOTSEL_COMPLETE);
 }
 
-void tuh_cdc_mount_cb(uint8_t idx)
-{
-  printf("tuh_cdc_mount_cb: %u\n", idx);
+void select_bootsel(void* arg) {
+  uint8_t idx = (uint8_t) arg;
+
   // If reached, then set the baud rate such that if this is a Raspberry PI Pico
   // (RP2040), then the switch of the baud rate will reset the board in bootset
   // mode. Making the board open as a mass storage class device, ready to accept
@@ -443,11 +443,24 @@ void tuh_cdc_mount_cb(uint8_t idx)
     CDC_LINE_CODING_PARITY_NONE,
     8
   };
+  printf("Set BAUD rate to 1200, to switch to BOOTSEL mode (%u)\n", idx);
   tuh_cdc_set_line_coding(idx, &line_coding, baud_rate_set_cb, 0);
+
+  // TODO: Disable data pins, and reenable data pins once the cdc_umount
+  // callback is registered.
+}
+
+void tuh_cdc_mount_cb(uint8_t idx)
+{
+  printf("tuh_cdc_mount_cb: %u\n", idx);
+
+  queue_usb_task(&select_bootsel, (void*) idx);
 }
 
 // Weakly linked, thus not causing errors if undefined.
-// void tuh_cdc_umount_cb(uint8_t idx)
+void tuh_cdc_umount_cb(uint8_t idx) {
+  printf("tuh_cdc_umount_cb: %u\n", idx);
+}
 
 //---------------------------------------------------------------------
 // TinyUSB callbacks
