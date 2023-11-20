@@ -134,11 +134,6 @@ target_link_libraries(uf2-batch-flasher
   hardware_watchdog
 )
 
-# Forbid float/double math for performance reasons, as none are natively
-# supported on the RP2040.
-pico_set_float_implementation(uf2-batch-flasher  none)
-pico_set_double_implementation(uf2-batch-flasher none)
-
 # Enable stdin/stdout over UART.
 pico_enable_stdio_usb(uf2-batch-flasher 0)
 pico_enable_stdio_uart(uf2-batch-flasher 1)

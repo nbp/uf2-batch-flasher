@@ -17,12 +17,20 @@
 #endif
 
 #ifndef CFG_TUSB_DEBUG
+#ifdef DEBUG
+#define CFG_TUSB_DEBUG        3
+#else
 #define CFG_TUSB_DEBUG        0
+#endif
 #endif
 
 //--------------------------------------------------------------------
-// DEVICE CONFIGURATION
+// DEVICE CONFIGURATION (disabled)
 //--------------------------------------------------------------------
+
+// TODO: Enable the device CDC in order to switch to BOOTSEL mode as the
+// stdio_usb library does using the baud rate, as well as re-implementing the
+// stdio_usb output.
 
 // RHPort number used for device can be defined by board.mk, default to port 0
 #ifndef BOARD_TUD_RHPORT
@@ -35,7 +43,7 @@
 #endif
 
 // Enable Device stack, Default is max speed that hardware controller could support with on-chip PHY
-#define CFG_TUD_ENABLED       1
+#define CFG_TUD_ENABLED       0
 #define CFG_TUD_MAX_SPEED     BOARD_TUD_MAX_SPEED
 
 // No Special section for the RP2040 while using DMA.
@@ -47,7 +55,7 @@
 #endif
 
 //------------- CLASS -------------//
-#define CFG_TUD_CDC              1
+#define CFG_TUD_CDC              0
 
 // CDC FIFO size of TX and RX
 #define CFG_TUD_CDC_RX_BUFSIZE   (TUD_OPT_HIGH_SPEED ? 512 : 64)
@@ -87,8 +95,10 @@
 //------------- CLASS -------------//
 
 // The UF2 batch flasher has 64 ports, which should be good enough for now.
-#define CFG_TUH_HUB                 0
-#define CFG_TUH_DEVICE_MAX          (CFG_TUH_HUB ? 4 : 1) // hub typically has 4 ports
+#define CFG_TUH_HUB                 1
+#define CFG_TUH_DEVICE_MAX          1
+// (CFG_TUH_HUB ? 4 : 1) // hub typically has 4 ports
+// #define CFG_TUH_MSC_MAXLUN          1 // typically 4
 
 // Setup the current Raspberry Pi Pico to be used as a host for reading the
 // file system of the device.

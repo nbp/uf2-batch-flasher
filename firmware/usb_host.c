@@ -1,5 +1,6 @@
 // Initialize and set registers needed to control USB selection and status.
 #include "hardware/gpio.h"
+#include "pico/binary_info.h"
 
 // This file hold all the handling of the filesystem of the connected device.
 #include "tusb_option.h"
@@ -75,20 +76,26 @@ void init_enable_pin(uint pin) {
 }
 
 void usb_gpio_init() {
+  bi_decl_if_func_used(bi_program_feature("Select USB device"));
   init_select_pin(PIN_SEL0);
+  bi_decl_if_func_used(bi_1pin_with_name(PIN_SEL0, "S0"));
   init_select_pin(PIN_SEL1);
+  bi_decl_if_func_used(bi_1pin_with_name(PIN_SEL1, "S1"));
   init_select_pin(PIN_SEL2);
+  bi_decl_if_func_used(bi_1pin_with_name(PIN_SEL2, "S2"));
   init_select_pin(PIN_SEL3);
+  bi_decl_if_func_used(bi_1pin_with_name(PIN_SEL3, "S3"));
   init_select_pin(PIN_SEL4);
+  bi_decl_if_func_used(bi_1pin_with_name(PIN_SEL4, "S4"));
 
+  bi_decl_if_func_used(bi_program_feature("Toggle USB device"));
   init_enable_pin(PIN_ENABLE_DATA);
+  bi_decl_if_func_used(bi_1pin_with_name(PIN_ENABLE_DATA, "EN_Data"));
   init_enable_pin(PIN_ENABLE_POWER);
-}
+  bi_decl_if_func_used(bi_1pin_with_name(PIN_ENABLE_POWER, "EN_Power"));
 
-// To do it properly we should rely on atomics, but updating a single volatile
-// boolean works as well as the volatile aspect implies that it cannot be
-// aliased.
-static volatile bool usb_host_initialized = false;
+  printf("USB GPIO initialized!\n");
+}
 
 // Aggregate the abstract status of all devices.
 static usb_status_t usb_status[USB_DEVICES];
@@ -117,6 +124,7 @@ void reset_usb_status() {
   for(size_t d = 0; d < USB_DEVICES; d++) {
     usb_status[d] = DEVICE_UNKNOWN;
   }
+  printf("Reset USB status\n");
 }
 
 usb_status_t get_usb_device_status(size_t d) {
@@ -154,6 +162,7 @@ void select_device(void* arg) {
   active_device = USB_DEVICES;
 
   if (active_device < USB_DEVICES) {
+    printf("Select USB device: %d\n", active_device);
     usb_status[active_device] = DEVICE_UNKNOWN;
     const uint select_mask =
       (active_device & 0x10 ? 1u << PIN_SEL0 : 0) |
@@ -422,6 +431,7 @@ void baud_rate_set_cb(struct tuh_xfer_s *unused)
 
 void tuh_cdc_mount_cb(uint8_t idx)
 {
+  printf("tuh_cdc_mount_cb: %u\n", idx);
   // If reached, then set the baud rate such that if this is a Raspberry PI Pico
   // (RP2040), then the switch of the baud rate will reset the board in bootset
   // mode. Making the board open as a mass storage class device, ready to accept
@@ -480,33 +490,52 @@ void usb_host_loop() {
   }
 }
 
+// To do it properly we should rely on atomics, but updating a single volatile
+// boolean works as well as the volatile aspect implies that it cannot be
+// aliased.
+static semaphore_t usb_host_initialized;
+
 void usb_host_main() {
+  usb_gpio_init();
   reset_usb_status();
   sleep_ms(10);
 
+  bi_decl_if_func_used(bi_program_feature("USB host"));
   pio_usb_configuration_t pio_cfg = PIO_USB_DEFAULT_CONFIG;
   // NOTE: PIO_USB_DEFAULT_CONFIGURATION uses PIO_USB_DP_PIN_DEFAULT which
   // coincidentally happen to be the same as PIN_USB_DP, but we keep the
   // following line in case we want to setup a different pin.
   pio_cfg.pin_dp = PIN_USB_DP;
+  bi_decl_if_func_used(bi_2pins_with_names(PIN_USB_DP, "USB Host D+", PIN_USB_DM, "USB Host D-"));
 
   // Initialize TinyUSB Host stack.
-  tuh_configure(1, TUH_CFGID_RPI_PIO_USB_CONFIGURATION, &pio_cfg);
+  if (!tuh_configure(BOARD_TUH_RHPORT, TUH_CFGID_RPI_PIO_USB_CONFIGURATION, &pio_cfg)) {
+    printf("TinyUSB failed to configure PIO USB port.\n");
+    return;
+  }
+  printf("TinyUSB Configured.\n");
+  sleep_ms(10);
   tuh_init(BOARD_TUH_RHPORT);
+  printf("TinyUSB Host port initialized.\n");
 
-  // TODO: [TUD] Initialize the device (as opposed to host) stack as well, such
-  // that this board can also forward printf output over USB.
-
-  usb_host_initialized = true;
+  // Inform the core-0 that core1 initialization is complete.
+  sem_release(&usb_host_initialized);
 
   // Jump into the host task, and never return...
+  printf("Starting USB Host loop.\n");
   usb_host_loop();
 }
 
 void usb_host_setup() {
+  sem_init(&usb_host_initialized, 0, 1);
+
   multicore_reset_core1();
   multicore_launch_core1(usb_host_main);
+
   // Block until TinyUSB and Pico PIO USB have completed the setup of the USB on
   // Pin 0 and 1.
-  while (!usb_host_initialized) {}
+  while (!sem_acquire_timeout_ms(&usb_host_initialized, 60000)) {
+    printf("Waiting for USB Host initialization.\n");
+  }
+  printf("USB Host initialized on core 1.\n");
 }
