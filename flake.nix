@@ -2,7 +2,7 @@
   description = "Hardware to flash multiple devices using UF2";
 
   inputs = {
-    nixpkgs.url = "nixpkgs/nixos-22.05";
+    nixpkgs.url = "nixpkgs/nixos-23.05";
   };
 
   outputs = { self, nixpkgs, ... }@inputs: let
@@ -24,5 +24,8 @@
     # nix develop -- Setup an environment with all tools needed By default we
     # consider that people are working on the firmware.
     devShells.x86_64-linux.default = import firmware/shell.nix { inherit pkgs; };
+    devShells.x86_64-linux.flash = import firmware/shell.nix {
+      inherit pkgs; runCmd = "build; flash;";
+    };
   };
 }
