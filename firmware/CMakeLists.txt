@@ -67,10 +67,6 @@ file(RENAME fsdata.c _webroot.c)
 
 add_executable(uf2-batch-flasher)
 
-# pico_generate_pio_header(uf2-batch-flasher
-#   ${CMAKE_CURRENT_LIST_DIR}/data-conn.pio
-# )
-
 # Make sure to not encode these in the repository.
 target_compile_definitions(uf2-batch-flasher PRIVATE
   WIFI_SSID=\"${WIFI_SSID}\"
