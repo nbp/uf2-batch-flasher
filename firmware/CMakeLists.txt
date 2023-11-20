@@ -121,7 +121,6 @@ target_link_libraries(uf2-batch-flasher
   # The TCP/IP stack is queried frequently by polling the interface manually As
   # the second core is dedicated to USB tasks, the first core is dedicated to
   # IP/TCP/HTTP tasks.
-  #pico_cyw43_arch_lwip_threadsafe_background
   pico_cyw43_arch_lwip_poll
 
   # Used to implement an HTTP server.

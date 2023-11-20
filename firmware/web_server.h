@@ -13,9 +13,8 @@ bool web_server_setup();
 // Stop the Wifi and the web server.
 void web_server_stop();
 
-// Execute the task to interract with the web client.
-void web_server_task();
-
+// Execute the tasks coming from the network or coming from the other core.
+void web_server_loop();
 
 // -------------------------------------------------------------------
 // List of callbacks to use as tasks by the USB interactions.

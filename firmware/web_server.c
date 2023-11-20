@@ -258,8 +258,11 @@ bool web_server_setup() {
   return true;
 }
 
-void web_server_task() {
-  exec_web_task();
+void web_server_loop() {
+  while (true) {
+    cyw43_arch_poll();
+    exec_web_task();
+  }
 }
 
 void web_server_stop() {

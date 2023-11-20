@@ -43,10 +43,9 @@ int main() {
     return 1;
   }
 
-  // Core 0 main loop, waiting for UART / USB input.
-  while (true) {
-    web_server_task();
-  }
+  // Core 0 main loop.
+  printf("Starting Web server loop.\n");
+  web_server_loop();
 
   return 0;
 }
