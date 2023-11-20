@@ -118,15 +118,18 @@ target_link_libraries(uf2-batch-flasher
   # PIO implementation for adding additional USB ports.
   tinyusb_pico_pio_usb
 
-  # Provide a thread-safe background polling og cyw43 wifi module, with a TCIP
-  # stack provided by LwIP.
-  pico_cyw43_arch_lwip_threadsafe_background
+  # The TCP/IP stack is queried frequently by polling the interface manually As
+  # the second core is dedicated to USB tasks, the first core is dedicated to
+  # IP/TCP/HTTP tasks.
+  #pico_cyw43_arch_lwip_threadsafe_background
+  pico_cyw43_arch_lwip_poll
 
   # Used to implement an HTTP server.
   pico_lwip_http
 
   pico_stdlib
   pico_stdio
+  pico_time
   hardware_gpio
   hardware_pio
 # DMA might be useful to implement a fast memcpy.
@@ -137,6 +140,10 @@ target_link_libraries(uf2-batch-flasher
 # Enable stdin/stdout over UART.
 pico_enable_stdio_usb(uf2-batch-flasher 0)
 pico_enable_stdio_uart(uf2-batch-flasher 1)
+target_compile_definitions(uf2-batch-flasher PRIVATE
+  PICO_DEFAULT_UART_TX_PIN=16
+  PICO_DEFAULT_UART_RX_PIN=17
+)
 
 # Create uf2/map/bin/hex/dis files.
 pico_add_extra_outputs(uf2-batch-flasher)

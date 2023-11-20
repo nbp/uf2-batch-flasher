@@ -23,8 +23,7 @@ void __attribute__((noreturn)) verbose_panic(const char *fmt, ...) {
     va_end(args);
   }
 
-  int limit = 4096;
-  while (limit--) {
+  while (true) {
     char* message = &msg[0];
     switch (input_get_timeout_us(message, 250 * 1000)) {
     case PICO_ERROR_TIMEOUT:
@@ -38,8 +37,4 @@ void __attribute__((noreturn)) verbose_panic(const char *fmt, ...) {
       break;
     }
   }
-
-  // NOTE: Doing that by default can otherwise be achieved with
-  // PICO_ENTER_USB_BOOT_ON_EXIT.
-  reset_usb_boot(0, 0);
 }

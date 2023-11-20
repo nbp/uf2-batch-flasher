@@ -23,12 +23,16 @@ int main() {
   xosc_init();
   set_sys_clock_khz(120000, true);
 
-  // Create a new stdio driver which buffers everything until the web
-  // interface is queried.
+  // Create stdio drivers to output printed content to either a UART interface
+  // or the web interface.
+  stdio_uart_init();
+  printf("STDIO UART initialized!\n");
   stdio_init_web();
+  printf("STDIO Web initialized!\n");
 
   // Initialize pipe communication between the 2 cores.
   pipes_init();
+  printf("Pipes across cores initialized!\n");
 
   // Setup USB devices.
   usb_host_setup();
