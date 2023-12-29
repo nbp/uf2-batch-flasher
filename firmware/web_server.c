@@ -96,9 +96,6 @@ uint16_t ssi_handler(int index, char *insert_at, int ins_len) {
   size_t insert_len = (size_t) ins_len;
   int out_len = 0;
   int inc_len = 0;
-#ifndef NDEBUG
-  printf("SSI handler called for %s\n", ssi_tags[index]);
-#endif
   switch (index) {
   // Used in status.json
   case SSI_TAG__sts: {
@@ -139,7 +136,6 @@ void ssi_init() {
   for (size_t t = 0; t < LWIP_ARRAYSIZE(ssi_tags); t++) {
     LWIP_ASSERT("Tags are restricted to LWIP_HTTPD_MAX_TAG_NAME_LEN",
                 strlen(ssi_tags[t]) <= LWIP_HTTPD_MAX_TAG_NAME_LEN);
-    printf("Register SSI tag: %s (%d)\n", ssi_tags[t], t);
   }
   http_set_ssi_handler(ssi_handler, ssi_tags, LWIP_ARRAYSIZE(ssi_tags));
 }

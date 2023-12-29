@@ -8,14 +8,14 @@
 #define NO_SYS 1
 
 #ifndef NDEBUG
-#define LWIP_DEBUG                  1
-#define LWIP_STATS                  1
-#define LWIP_STATS_DISPLAY          1
+#define LWIP_DEBUG                  0
+#define LWIP_STATS                  0
+#define LWIP_STATS_DISPLAY          0
 #define IP_DEBUG                    LWIP_DBG_OFF
 #define TCP_DEBUG                   LWIP_DBG_OFF
-#define HTTPD_DEBUG                 LWIP_DBG_ON
-#define HTTPD_DEBUG_TIMING          LWIP_DBG_ON
-#define LWIP_DBG_TYPES_ON           LWIP_DBG_ON
+#define HTTPD_DEBUG                 LWIP_DBG_OFF
+#define HTTPD_DEBUG_TIMING          LWIP_DBG_OFF
+#define LWIP_DBG_TYPES_ON           LWIP_DBG_OFF
 // (LWIP_DBG_TRACE|LWIP_DBG_STATE|LWIP_DBG_FRESH|LWIP_DBG_HALT)
 #define LWIP_DBG_MIN_LEVEL          LWIP_DBG_LEVEL_ALL
 #endif

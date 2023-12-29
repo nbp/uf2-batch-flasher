@@ -25,12 +25,11 @@ uint16_t stdout_ssi(char *insert_at, int ins_len)
 
   // Truncate to what is stored in the buffer.
   size_t len = (size_t) ins_len;
-  if (stdout.start < stdout.end) {
+  if (stdout.start <= stdout.end) {
     if (stdout.end - stdout.start < len) {
       len = stdout.end - stdout.start;
     }
-  }
-  if (stdout.start > stdout.end) {
+  } else {
     if (stdout.end + OUT_SIZE - stdout.start < len) {
       len = stdout.end + OUT_SIZE - stdout.start;
     }
