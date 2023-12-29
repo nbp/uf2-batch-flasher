@@ -63,8 +63,8 @@ const char *reboot_cgi(int index, int num_params, char *params[], char *values[]
 // List of CGI handlers, used to map a resource name to a handler to process the
 // request.
 static const tCGI cgi_handlers[] = {
-  { "/select", select_cgi },
-  { "/reboot", reboot_cgi }
+  { "/select.cgi", select_cgi },
+  { "/reboot.cgi", reboot_cgi }
 };
 
 void cgi_init() {
