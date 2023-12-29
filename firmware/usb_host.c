@@ -51,6 +51,7 @@ static const uint PIN_SEL1 = 3;
 static const uint PIN_SEL2 = 4;
 static const uint PIN_SEL3 = 5;
 static const uint PIN_SEL4 = 6;
+static const uint PIN_SEL5 = 7;
 
 // Enable pins.
 //
@@ -58,8 +59,8 @@ static const uint PIN_SEL4 = 6;
 // The USB spec has specifically designed connectors to have shorter data pins,
 // such that power can flow to the connected device such that they can properly
 // answer on the data pins once they are connected.
-static const uint PIN_ENABLE_DATA = 7;
-static const uint PIN_ENABLE_POWER = 8;
+static const uint PIN_ENABLE_DATA = 8;
+static const uint PIN_ENABLE_POWER = 9;
 
 void init_select_pin(uint pin) {
   gpio_init(pin);
@@ -89,6 +90,8 @@ void usb_gpio_init() {
   bi_decl_if_func_used(bi_1pin_with_name(PIN_SEL3, "S3"));
   init_select_pin(PIN_SEL4);
   bi_decl_if_func_used(bi_1pin_with_name(PIN_SEL4, "S4"));
+  init_select_pin(PIN_SEL5);
+  bi_decl_if_func_used(bi_1pin_with_name(PIN_SEL5, "S5"));
 
   bi_decl_if_func_used(bi_program_feature("Toggle USB device"));
   init_enable_pin(PIN_ENABLE_DATA);
@@ -171,7 +174,8 @@ void select_device(size_t device) {
       (1 << PIN_SEL1) |
       (1 << PIN_SEL2) |
       (1 << PIN_SEL3) |
-      (1 << PIN_SEL4);
+      (1 << PIN_SEL4) |
+      (1 << PIN_SEL5);
     gpio_clr_mask(select_mask);
   }
 
@@ -184,11 +188,12 @@ void select_device(size_t device) {
 
     // Set all pins used for selecting a device.
     const uint select_mask =
-      (active_device & 0x10 ? 1u << PIN_SEL0 : 0) |
-      (active_device & 0x08 ? 1u << PIN_SEL1 : 0) |
+      (active_device & 0x01 ? 1u << PIN_SEL0 : 0) |
+      (active_device & 0x02 ? 1u << PIN_SEL1 : 0) |
       (active_device & 0x04 ? 1u << PIN_SEL2 : 0) |
-      (active_device & 0x02 ? 1u << PIN_SEL3 : 0) |
-      (active_device & 0x01 ? 1u << PIN_SEL4 : 0);
+      (active_device & 0x08 ? 1u << PIN_SEL3 : 0) |
+      (active_device & 0x10 ? 1u << PIN_SEL4 : 0) |
+      (active_device & 0x20 ? 1u << PIN_SEL5 : 0);
     gpio_set_mask(select_mask);
 
     enable_usb_power();
@@ -203,6 +208,14 @@ void select_device_cb(void* arg) {
     device = USB_DEVICES;
   }
   select_device(device);
+}
+
+void test_usb_power() {
+  for (size_t i = 0; i < USB_DEVICES; i++) {
+    sleep_ms(250);
+    select_device(i);
+  }
+  select_device(USB_DEVICES);
 }
 
 //---------------------------------------------------------------------
@@ -554,6 +567,7 @@ static semaphore_t usb_host_initialized;
 void usb_host_main() {
   usb_gpio_init();
   reset_usb_status();
+  test_usb_power();
   sleep_ms(10);
 
   bi_decl_if_func_used(bi_program_feature("USB host"));
