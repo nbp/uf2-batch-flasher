@@ -6,8 +6,8 @@ async function update_stdout() {
   let out = await fetch("/stdout.ssi");
   out = await out.text();
   let console = document.getElementById("console");
+  if (out == "\n") return;
   let text = out.split('\n').map(line => `pico: ${line}\n`).join("");
-  if (text == "\n") return;
   console.innerText += text;
 }
 function console_log(...args) {
@@ -229,7 +229,7 @@ function setup() {
   // devices. This is useful to unlock promises which are waiting for changes in
   // the state of USB devices.
   status_timer = setInterval(update_status, 1000, undefined);
-  //stdout_timer = setInterval(update_stdout, 1000, undefined);
+  stdout_timer = setInterval(update_stdout, 1000, undefined);
 }
 
 function unsetup() {
