@@ -71,6 +71,8 @@ void init_select_pin(uint pin) {
 void init_enable_pin(uint pin) {
   gpio_init(pin);
   gpio_set_dir(pin, GPIO_OUT);
+  // Set the enable pin as not enabling anything yet.
+  // The logic of the component is inverted.
   gpio_pull_up(pin);
   gpio_put(pin, false);
 }
@@ -134,18 +136,36 @@ usb_status_t get_usb_device_status(size_t d) {
   return usb_status[d];
 }
 
-void select_device(void* arg) {
+void disable_usb_power() {
+  gpio_put(PIN_ENABLE_POWER, true);
+}
+
+void enable_usb_power() {
+  gpio_put(PIN_ENABLE_POWER, false);
+}
+
+void disable_usb_data() {
+  gpio_put(PIN_ENABLE_DATA, true);
+}
+
+void enable_usb_data() {
+  gpio_put(PIN_ENABLE_DATA, false);
+}
+
+void select_device(size_t device) {
   // Disconnect data and power pin of the device.
   if (active_device < USB_DEVICES) {
-    gpio_put(PIN_ENABLE_DATA, false);
+    disable_usb_data();
     sleep_ms(1);
-    gpio_put(PIN_ENABLE_POWER, false);
+    disable_usb_power();
 
-    // Wait until TinyUSB reports the disk as unmounted.
+    // Wait until TinyUSB reports the disk as unmounted, if it were ever
+    // mounted.
     while (usb_status[active_device] & DEVICE_TUH_MOUNTED) {
       tuh_task();
     }
 
+    // Clear all pins used for selecting a device.
     const uint select_mask =
       (1 << PIN_SEL0) |
       (1 << PIN_SEL1) |
@@ -155,15 +175,14 @@ void select_device(void* arg) {
     gpio_clr_mask(select_mask);
   }
 
-  size_t device = (size_t) (uintptr_t) arg;
-  if (device > USB_DEVICES) {
-    device = USB_DEVICES;
-  }
-  active_device = USB_DEVICES;
+  active_device = device;
 
+  // Connect the power and data pins of the selected device.
   if (active_device < USB_DEVICES) {
     printf("Select USB device: %d\n", active_device);
     usb_status[active_device] = DEVICE_UNKNOWN;
+
+    // Set all pins used for selecting a device.
     const uint select_mask =
       (active_device & 0x10 ? 1u << PIN_SEL0 : 0) |
       (active_device & 0x08 ? 1u << PIN_SEL1 : 0) |
@@ -172,10 +191,18 @@ void select_device(void* arg) {
       (active_device & 0x01 ? 1u << PIN_SEL4 : 0);
     gpio_set_mask(select_mask);
 
-    gpio_put(PIN_ENABLE_POWER, true);
+    enable_usb_power();
     sleep_ms(1);
-    gpio_put(PIN_ENABLE_DATA, true);
+    enable_usb_data();
   }
+}
+
+void select_device_cb(void* arg) {
+  size_t device = (size_t) (uintptr_t) arg;
+  if (device > USB_DEVICES) {
+    device = USB_DEVICES;
+  }
+  select_device(device);
 }
 
 //---------------------------------------------------------------------

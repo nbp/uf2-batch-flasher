@@ -48,7 +48,7 @@ usb_status_t get_usb_device_status(size_t d);
 // Given an uintptr_t as argument, which represent the index of the USB port to
 // enable, switch off the currently active device and enable the requested
 // device.
-void select_device(void* arg);
+void select_device_cb(void* arg);
 
 // This function will setup the USB device based on pio pins and would block the
 // thread it is spawned on.

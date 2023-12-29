@@ -30,7 +30,7 @@ const char *select_cgi(int index, int num_params, char *params[], char *values[]
     if (strcmp(param, "active_device") == 0) {
       // Select a given USB port.
       uintptr_t idx = (uintptr_t) atoi(value);
-      queue_usb_task(&select_device, (void*) idx);
+      queue_usb_task(&select_device_cb, (void*) idx);
     }
   }
   return "/status.json";
