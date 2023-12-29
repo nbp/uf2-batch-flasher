@@ -7,6 +7,7 @@ async function update_stdout() {
   out = await out.text();
   let console = document.getElementById("console");
   let text = out.split('\n').map(line => `pico: ${line}\n`).join("");
+  if (text == "\n") return;
   console.innerText += text;
 }
 function console_log(...args) {
@@ -151,6 +152,10 @@ async function send_uf2(name, content) {
       console_log(`Unable to flash device at USB port ${device}.`);
     }
   }
+
+  // Unpower all USB devices after having iterated over all of them. Otherwise
+  // the last USB port might remain connected.
+  select_device(USB_DEVICES, 500);
 }
 
 let flash_all_click_handler = null;
@@ -160,7 +165,7 @@ async function dropFilesHandler(ev) {
 
   let flashAll = document.getElementById("flash_all");
   if (flash_all_click_handler) {
-    flashAll.addEventListener("onclick", flash_all_click_handler);
+    flashAll.removeEventListener("click", flash_all_click_handler);
     flashAll.disabled = true;
   }
   flash_all_click_handler = null;
@@ -174,7 +179,8 @@ async function dropFilesHandler(ev) {
   let filesContent = [];
   for (let file of dataTransfer.files) {
     let buffer = await file.arrayBuffer();
-    let header = String.fromCharCode(...new Uint8Buffer(buffer.slice(0, 4)));
+    // UF2 files are divided in fixed sized chunks starting with 'UF2\n'
+    //let header = String.fromCharCode(...new Uint8Array(buffer.slice(0, 4)));
     filesContent.push({
       name: file.name,
       content: buffer
@@ -190,7 +196,7 @@ async function dropFilesHandler(ev) {
 
     // Disable the button while we are flashing usb devices.
     flashAll.disabled = false;
-    for (let file of fileContent) {
+    for (let file of filesContent) {
       await send_uf2(file.buffer);
     }
     flashAll.disabled = true;
@@ -199,28 +205,58 @@ async function dropFilesHandler(ev) {
   // Update the button to flash USB devices using the files of the data
   // transfer.
   flash_all_click_handler = clickHandler;
-  flashAll.addEventListener("onclick", flash_all_click_handler);
+  flashAll.addEventListener("click", flash_all_click_handler);
   flashAll.disabled = false;
 }
+
+function dropDragOver(ev) {
+  // Needed to avoid seeing null dataTransfer field while processing ondrop
+  // events.
+  ev.preventDefault();
+}
+
+let status_timer = null;
+let stdout_timer = null;
 
 // Hook the current script and attach it to the DOM.
 function setup() {
   // Register an action when new files are selected.
   let dropzone = document.getElementById("dropzone");
-  dropzone.addEventListener("ondrop", dropFilesHandler);
+  dropzone.addEventListener("drop", dropFilesHandler);
+  dropzone.addEventListener("dragover", dropDragOver);
 
   // Poll the Pico every 100ms to collect new status information about the USB
   // devices. This is useful to unlock promises which are waiting for changes in
   // the state of USB devices.
-  //setInterval(update_status, 100, undefined);
-  //setInterval(update_stdout, 250, undefined);
+  status_timer = setInterval(update_status, 1000, undefined);
+  //stdout_timer = setInterval(update_stdout, 1000, undefined);
+}
+
+function unsetup() {
+  let dropzone = document.getElementById("dropzone");
+  dropzone.removeEventListener("drop", dropFilesHandler);
+  dropzone.removeEventListener("dragover", dropDragOver);
+
+  clearInterval(status_timer);
+  clearInterval(stdout_timer);
+
+  let flashAll = document.getElementById("flash_all");
+  if (flash_all_click_handler) {
+    flashAll.removeEventListener("click", flash_all_click_handler);
+    flashAll.disabled = true;
+  }
+  flash_all_click_handler = null;
 }
 
 setup();
 
 window.update_stdout = update_stdout;
 window.update_status = update_status;
+window.setup = setup;
+window.unsetup = unsetup;
 export {
   update_stdout,
-  update_status
+  update_status,
+  setup,
+  unsetup
 }

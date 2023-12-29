@@ -8,27 +8,34 @@
      body {
        display: grid;
        grid-gap: 20px;
-       grid-template-columns: 120px auto auto 120px;
+       grid-template-rows: 120px 80px auto 120px;
        grid-template-areas:
          "header  header  header"
-         "status dropzone console"
          "status controls console"
+         "status dropzone console"
          "footer  footer  footer";
      }
-     .status { grid-area: status; }
-     .controls { grid-area: controls; }
-     .dropzone {
+     #status { grid-area: status; }
+     #status > ol { columns: 2; }
+     #controls { grid-area: controls; }
+     #dropzone {
        grid-area: dropzone;
-       border: 5px dashed blue;
-       width: 200px;
-       height: 100px;
+       border: 10px dashed gray;
+       text-align: center;
+       line-height: 300px;
+
      }
-     .console {
+     #console {
        grid-area: console;
        font-family: monospace;
        white-space: pre-wrap;
+       overflow: scroll;
+       height: 600px;
      }
-     header { grid-area: header; }
+     header {
+       grid-area: header;
+       text-align: center;
+     }
      footer { grid-area: footer; }
     </style>
     <script type="importmap">
