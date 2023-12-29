@@ -450,43 +450,65 @@ void tuh_msc_unmount_cb(uint8_t dev_addr)
 //---------------------------------------------------------------------
 // TinyUSB CDC callbacks
 
-void baud_rate_set_cb(struct tuh_xfer_s *unused)
-{
+void baud_rate_set_cb(struct tuh_xfer_s* unused) {
   (void) unused;
+}
+
+void force_unmount_cdc(void* arg) {
+  (void) arg;
   report_status(DEVICE_BOOTSEL_COMPLETE);
+
+  // Disable data pins, and reenable data pins once the cdc_umount callback is
+  // registered. Disabling is used to work-around an issue where the host
+  // remains in a CDC state instead of unmounting the device.
+  printf("Disable data to umount CDC\n");
+  disable_usb_data();
+
+  // Note we could explcitly call the cdch_close function with the device
+  // address 1 to explicitly call the umount function. However, we should only
+  // do this once we are no longer waiting for resposnes from the device, which
+  // is controlled within TinyUSB library. Toggling the pins does that for us.
+  //cdch_close(1);
 }
 
 void select_bootsel(void* arg) {
-  uint8_t idx = (uint8_t) arg;
+  uint8_t idx = (uint8_t) (uintptr_t) arg;
 
   // If reached, then set the baud rate such that if this is a Raspberry PI Pico
   // (RP2040), then the switch of the baud rate will reset the board in bootset
   // mode. Making the board open as a mass storage class device, ready to accept
   // a uf2 image.
   report_status(DEVICE_BOOTSEL_REQUEST);
+  printf("Set BAUD rate to 1200, to switch to BOOTSEL mode (%u)\n", idx);
   cdc_line_coding_t line_coding = {
     1200, // Special value used by RPi Pico to reset to BOOTSEL mode.
     CDC_LINE_CONDING_STOP_BITS_1,
     CDC_LINE_CODING_PARITY_NONE,
     8
   };
-  printf("Set BAUD rate to 1200, to switch to BOOTSEL mode (%u)\n", idx);
-  tuh_cdc_set_line_coding(idx, &line_coding, baud_rate_set_cb, 0);
 
-  // TODO: Disable data pins, and reenable data pins once the cdc_umount
-  // callback is registered.
+  // As the device reboots after receiving the baud rate changes, the host stall
+  // at waiting for an answer and this would cause an assertion failure (which
+  // does not break the execution)
+  tuh_cdc_set_line_coding(idx, &line_coding, baud_rate_set_cb, 0);
+  queue_usb_task(&force_unmount_cdc, (void*) (uintptr_t) idx);
+}
+
+void restore_usb_data(void* arg) {
+  (void) arg;
+  enable_usb_data();
 }
 
 void tuh_cdc_mount_cb(uint8_t idx)
 {
   printf("tuh_cdc_mount_cb: %u\n", idx);
-
-  queue_usb_task(&select_bootsel, (void*) idx);
+  queue_usb_task(&select_bootsel, (void*) (uintptr_t) idx);
 }
 
 // Weakly linked, thus not causing errors if undefined.
 void tuh_cdc_umount_cb(uint8_t idx) {
   printf("tuh_cdc_umount_cb: %u\n", idx);
+  queue_usb_task(&restore_usb_data, (void*) (uintptr_t) idx);
 }
 
 //---------------------------------------------------------------------
@@ -495,7 +517,6 @@ void tuh_cdc_umount_cb(uint8_t idx) {
 // The device dev_addr is now plugged in.
 void tuh_mount_cb(uint8_t dev_addr)
 {
-  // application set-up
   printf("A device with address %d is mounted\r\n", dev_addr);
   toggle_status(DEVICE_TUH_MOUNTED);
 
@@ -503,11 +524,6 @@ void tuh_mount_cb(uint8_t dev_addr)
 
   // TODO: Query information about the connected device.
   //tuh_descriptor_get_device(daddr, &desc_device, 18, print_device_descriptor, 0);
-
-  // TODO: Update the baud rate to reboot the device in bootsel mode, and turn
-  // on msc for flashing content to it.
-  //
-  // How is tuh_cdc_mount called?
 }
 
 // The device dev_addr is now unplugged.
