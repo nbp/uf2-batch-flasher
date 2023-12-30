@@ -36,7 +36,7 @@ uint16_t stdout_ssi(char *insert_at, int ins_len)
   }
 
   size_t half = 0;
-  if (stdout.start + len > OUT_SIZE) {
+  if (stdout.start + len >= OUT_SIZE) {
     half = OUT_SIZE - stdout.start;
     memcpy(insert_at, &stdout.buffer[stdout.start], half);
     stdout.start = 0;
@@ -64,8 +64,9 @@ void stdio_web_out_chars(const char *buf, int length)
     stdout.start = 0;
     stdout.end = 0;
   }
+
   size_t half = 0;
-  if (len + stdout.end >= OUT_SIZE) {
+  if (stdout.end + len >= OUT_SIZE) {
     half = OUT_SIZE - stdout.end;
     memcpy(&stdout.buffer[stdout.end], buf, half);
     if (stdout.start > stdout.end) {
@@ -76,7 +77,7 @@ void stdio_web_out_chars(const char *buf, int length)
   }
   if (len) {
     memcpy(&stdout.buffer[stdout.end], &buf[half], len);
-    if (stdout.start > stdout.end && stdout.start < stdout.end + len) {
+    if (stdout.start > stdout.end && stdout.start <= stdout.end + len) {
       stdout.start = (stdout.end + len + 1) % OUT_SIZE;
     }
     stdout.end += len;
