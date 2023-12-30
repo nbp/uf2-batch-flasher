@@ -95,9 +95,9 @@ bool queue_web_task(task_t cb, void *arg) {
     return false;
   }
 
-  web_tasks.buffer[web_tasks.start].task = cb;
-  web_tasks.buffer[web_tasks.start].arg = arg;
-  web_tasks.start = (web_tasks.start + 1) % TASKS_SIZE;
+  web_tasks.buffer[web_tasks.end].task = cb;
+  web_tasks.buffer[web_tasks.end].arg = arg;
+  web_tasks.end = (web_tasks.end + 1) % TASKS_SIZE;
   mutex_exit(&web_tasks.mutex);
   return true;
 }
@@ -109,9 +109,9 @@ void exec_web_task() {
     return;
   }
 
-  task_t cb = web_tasks.buffer[web_tasks.end].task;
-  void* arg = web_tasks.buffer[web_tasks.end].arg;
-  web_tasks.end = (web_tasks.end + 1) % TASKS_SIZE;
+  task_t cb = web_tasks.buffer[web_tasks.start].task;
+  void* arg = web_tasks.buffer[web_tasks.start].arg;
+  web_tasks.start = (web_tasks.start + 1) % TASKS_SIZE;
   mutex_exit(&web_tasks.mutex);
 
   cb(arg);
@@ -124,9 +124,9 @@ bool queue_usb_task(task_t cb, void* arg) {
     return false;
   }
 
-  usb_tasks.buffer[usb_tasks.start].task = cb;
-  usb_tasks.buffer[usb_tasks.start].arg = arg;
-  usb_tasks.start = (usb_tasks.start + 1) % TASKS_SIZE;
+  usb_tasks.buffer[usb_tasks.end].task = cb;
+  usb_tasks.buffer[usb_tasks.end].arg = arg;
+  usb_tasks.end = (usb_tasks.end + 1) % TASKS_SIZE;
   mutex_exit(&usb_tasks.mutex);
   return true;
 }
@@ -138,9 +138,9 @@ void exec_usb_task() {
     return;
   }
 
-  task_t cb = usb_tasks.buffer[usb_tasks.end].task;
-  void* arg = usb_tasks.buffer[usb_tasks.end].arg;
-  usb_tasks.end = (usb_tasks.end + 1) % TASKS_SIZE;
+  task_t cb = usb_tasks.buffer[usb_tasks.start].task;
+  void* arg = usb_tasks.buffer[usb_tasks.start].arg;
+  usb_tasks.start = (usb_tasks.start + 1) % TASKS_SIZE;
   mutex_exit(&usb_tasks.mutex);
 
   cb(arg);
