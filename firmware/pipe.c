@@ -14,9 +14,9 @@ static pipe_t stream;
 // Return whether we can append len bytes in the pipe right now.
 bool pipe_has_freespace(size_t len) {
   mutex_enter_blocking(&stream.mutex);
-  bool res = (stream.end + len) % BUFFER_SIZE < stream.start;
+  size_t freespace = (stream.start - stream.end + BUFFER_SIZE - 1) % BUFFER_SIZE;
   mutex_exit(&stream.mutex);
-  return res;
+  return len < freespace;
 }
 
 // Append content. block until the pipe has enough free-space to save the
@@ -46,9 +46,9 @@ void pipe_enqueue(const uint8_t* content, size_t len) {
 // Check if there is any data to be sent yet.
 bool pipe_has_data(size_t len) {
   mutex_enter_blocking(&stream.mutex);
-  bool res = (stream.end + BUFFER_SIZE - stream.start) % BUFFER_SIZE >= len;
+  size_t usedspace = (stream.end - stream.start + BUFFER_SIZE) % BUFFER_SIZE;
   mutex_exit(&stream.mutex);
-  return res;
+  return len <= usedspace;
 }
 
 // dequeue the data from the pipe and move it to the output array, also free
