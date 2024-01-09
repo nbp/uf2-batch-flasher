@@ -33,6 +33,9 @@
 // server.
 #include "pipe.h"
 
+// Some debugging
+#include "input.h"
+
 #include "usb_host.h"
 
 #define $UNUSED __attribute__((__unused__))
@@ -113,15 +116,26 @@ void report_status(usb_status_t st) {
     return;
   }
   usb_status_t status = usb_status[active_device];
-  status = (status & 0xc0) | st;
+  status = (status & DEVICE_IS_MOUNTED) | st;
   usb_status[active_device] = status;
+  //printf("usb[%d] = %x\n", active_device, status);
 }
 
-void toggle_status(usb_status_t st) {
+void set_mount_status(usb_status_t st, bool set) {
   if (active_device >= USB_DEVICES) {
     return;
   }
-  usb_status[active_device] ^= st;
+  if (set) {
+    usb_status[active_device] |= st;
+  } else {
+    usb_status[active_device] &= ~st;
+  }
+  printf("usb[%d] = %x\n", active_device, usb_status[active_device]);
+}
+
+void reset_status() {
+  usb_status[active_device] = DEVICE_UNKNOWN;
+  printf("usb[%d] = %x\n", active_device, usb_status[active_device]);
 }
 
 void reset_usb_status() {
@@ -129,7 +143,7 @@ void reset_usb_status() {
   for(size_t d = 0; d < USB_DEVICES; d++) {
     usb_status[d] = DEVICE_UNKNOWN;
   }
-  printf("Reset USB status\n");
+  printf("Reset all USB status\n");
 }
 
 usb_status_t get_usb_device_status(size_t d) {
@@ -158,13 +172,19 @@ void enable_usb_data() {
 void select_device(size_t device) {
   // Disconnect data and power pin of the device.
   if (active_device < USB_DEVICES) {
+    printf("Disconnect USB %d Data.\n", active_device);
     disable_usb_data();
     sleep_ms(1);
+    printf("Disconnect USB %d Power.\n", active_device);
     disable_usb_power();
+    sleep_ms(1);
 
     // Wait until TinyUSB reports the disk as unmounted, if it were ever
     // mounted.
-    while (usb_status[active_device] & DEVICE_TUH_MOUNTED) {
+    if (usb_status[active_device] & DEVICE_IS_MOUNTED) {
+      printf("Wait for USB %d to be unmounted.\n", active_device);
+    }
+    while (usb_status[active_device] & DEVICE_IS_MOUNTED) {
       tuh_task();
     }
 
@@ -184,7 +204,7 @@ void select_device(size_t device) {
   // Connect the power and data pins of the selected device.
   if (active_device < USB_DEVICES) {
     printf("Select USB device: %d\n", active_device);
-    usb_status[active_device] = DEVICE_UNKNOWN;
+    reset_status();
 
     // Set all pins used for selecting a device.
     const uint select_mask =
@@ -196,6 +216,7 @@ void select_device(size_t device) {
       (active_device & 0x20 ? 1u << PIN_SEL5 : 0);
     gpio_set_mask(select_mask);
 
+    sleep_ms(1);
     enable_usb_power();
     sleep_ms(1);
     enable_usb_data();
@@ -203,16 +224,18 @@ void select_device(size_t device) {
 }
 
 void select_device_cb(void* arg) {
+  //led_put(true);
   size_t device = (size_t) (uintptr_t) arg;
   if (device > USB_DEVICES) {
     device = USB_DEVICES;
   }
   select_device(device);
+  //led_put(false);
 }
 
 void test_usb_power() {
   for (size_t i = 0; i < USB_DEVICES; i++) {
-    sleep_ms(250);
+    sleep_ms(100);
     select_device(i);
   }
   select_device(USB_DEVICES);
@@ -440,7 +463,7 @@ void close_file(void* arg)
 void tuh_msc_mount_cb(uint8_t dev_addr)
 {
   printf("tuh_msc_mount_cb: %u\n", dev_addr);
-  toggle_status(DEVICE_MSC_MOUNTED);
+  set_mount_status(DEVICE_MSC_MOUNTED, true);
 
   // Query information about the filesystem of the device, and mount it using
   // f_mount before manipulating it.
@@ -452,7 +475,7 @@ void tuh_msc_mount_cb(uint8_t dev_addr)
 void tuh_msc_unmount_cb(uint8_t dev_addr)
 {
   printf("tuh_msc_unmount_cb: %u\n", dev_addr);
-  toggle_status(DEVICE_MSC_MOUNTED);
+  set_mount_status(DEVICE_MSC_MOUNTED, false);
 
   uint8_t const drive_num = dev_addr - 1;
   char drive_path[3] = "0:";
@@ -515,12 +538,14 @@ void restore_usb_data(void* arg) {
 void tuh_cdc_mount_cb(uint8_t idx)
 {
   printf("tuh_cdc_mount_cb: %u\n", idx);
+  set_mount_status(DEVICE_CDC_MOUNTED, true);
   queue_usb_task(&select_bootsel, (void*) (uintptr_t) idx);
 }
 
 // Weakly linked, thus not causing errors if undefined.
 void tuh_cdc_umount_cb(uint8_t idx) {
   printf("tuh_cdc_umount_cb: %u\n", idx);
+  set_mount_status(DEVICE_CDC_MOUNTED, false);
   queue_usb_task(&restore_usb_data, (void*) (uintptr_t) idx);
 }
 
@@ -531,7 +556,7 @@ void tuh_cdc_umount_cb(uint8_t idx) {
 void tuh_mount_cb(uint8_t dev_addr)
 {
   printf("A device with address %d is mounted\r\n", dev_addr);
-  toggle_status(DEVICE_TUH_MOUNTED);
+  set_mount_status(DEVICE_TUH_MOUNTED, true);
 
   // TODO: Turn on the notification LED from the Raspberry PI Pico.
 
@@ -544,7 +569,7 @@ void tuh_umount_cb(uint8_t dev_addr)
 {
   // application tear-down
   printf("A device with address %d is unmounted \r\n", dev_addr);
-  toggle_status(DEVICE_TUH_MOUNTED);
+  set_mount_status(DEVICE_IS_MOUNTED, false);
 
   // TODO: Turn off the notification LED from the Raspberry PI Pico.
 }

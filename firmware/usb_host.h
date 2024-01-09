@@ -41,6 +41,8 @@ typedef enum {
   DEVICE_TUH_MOUNTED = 0x20,
   DEVICE_MSC_MOUNTED = 0x40,
   DEVICE_CDC_MOUNTED = 0x80,
+
+  DEVICE_IS_MOUNTED = 0xe0,
 } usb_status_t;
 
 usb_status_t get_usb_device_status(size_t d);
