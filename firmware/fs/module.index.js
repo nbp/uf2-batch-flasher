@@ -11,12 +11,13 @@ async function update_stdout() {
   console.innerText += text;
 }
 function console_log(...args) {
+  let console = document.getElementById("console");
   console.innerText += "web: " + args.map(a => a.toString()).join(" ") + "\n";
 }
 
-function asyncTimeout(timeout, msg) {
+function asyncTimeout(timeout) {
   return new Promise((resolve, reject) => {
-    setTimeout(reject, timeout, msg);
+    setTimeout(reject, timeout);
   });
 }
 
@@ -44,15 +45,9 @@ let usb_status = [
 ];
 
 const USB_DEVICES = 64;
-let last_status = [];
 
-// Condition which resolves or rejects a promise if the condition is met.
-let cond_status = null;
-
-function clear_status() {
-  last_status = [];
-}
-
+// Function which resolves or rejects a promise if the condition is met.
+let wait_for_status = [];
 async function update_status(status) {
   if (!status) {
     status = await fetch("/status.json");
@@ -66,69 +61,99 @@ async function update_status(status) {
   }
   for (let s of status) {
     let li = document.createElement("li");
-    li.innerText = usb_status[s & 0x1f] ?? "???";
+    let text = usb_status[s & 0x1f] ?? "???";
+    text += " (0x" + s.toString(16) + ")";
+    li.innerText = text;
     dom.appendChild(li);
   }
 
-  last_status = status;
-  if (cond_status && cond_status(status)) {
-    cond_status = null;
-  }
+  wait_for_status = wait_for_status.filter(query => !query(status));
   return status;
 }
 
-async function select_device(device, timeout) {
-  let is_selected = new Promise((resolve, reject) => {
-    cond_status = function wait_msc_mount(status) {
-      // Reject the promise in case of error.
-      if (status[device] & 0x10) {
-        is_selected.reject(usb_status[status[device] & 0x1f]);
+async function wait_for_usb_status(device, expected_status, timeout, msg) {
+  let no_more_checks = false;
+  let wait = new Promise((resolve, reject) => {
+    function check_for_expectation(status) {
+      //console_log(`Check usb ${device} status (=${status[device].toString(16)}) for ${expected_status.toString(16)}`);
+      if (no_more_checks) {
+        reject(status[device]);
         return true;
       }
-      // Wait until the device is mounted as a storage device.
-      if (status[device] & 0x40) {
-        is_selected.resolve(usb_status[status[device] & 0x1f]);
+
+      // Reject the promise in case of error.
+      if (status[device] & 0x10) {
+        reject(status[device]);
+        return true;
+      }
+
+      if (expected_status >= 0x20) {
+        // Wait until the device is mounted.
+        if (status[device] & expected_status == expected_status) {
+          resolve(status[device]);
+          return true;
+        }
+      } else {
+        // Wait until a state is reached.
+        if ((status[device] & 0x0f) == expected_status) {
+          resolve(status[device]);
+          return true;
+        }
       }
       return false;
     };
+
+    wait_for_status.push(check_for_expectation);
   });
+
+  try {
+    await Promise.race([wait, asyncTimeout(timeout)]);
+  } catch (e) {
+    no_more_checks = true;
+    if (e === undefined) {
+      throw new Error(msg);
+    } else {
+      throw new Error(`Unexpected status code: 0x${e.toString(16)}`);
+    }
+  }
+}
+
+async function select_device(device, timeout) {
   await update_status(await fetch(`/select.cgi?active_device=${device}`));
 
-  // If the device cannot be selected, we want to fail in order to switch to the
-  // next USB device. This timeout is here to make us switch if the USB device
-  // is unresponsive.
-  let timeout_trigger =
-    asyncTimeout(timeout, "Unable to use USB device as a Mass Storage");
-  await Promise.race([is_selected, timeout_trigger]);
+  if (device >= USB_DEVICES) {
+    return;
+  }
+
+  if (timeout == 0) {
+    return;
+  }
+
+  let flash_request = wait_for_usb_status(
+    device, 0x03, timeout, "Timeout while waiting for flash request");
+  await flash_request;
+}
+
+let range_min = 0;
+let range_max = USB_DEVICES;
+function set_usb_range(min, max) {
+  range_min = min;
+  range_max = max;
 }
 
 // content is an array buffer, typed array, blob, json or text.
 async function send_uf2(name, content) {
 
-  for (let device = 0; device < USB_DEVICES; device++) {
+  for (let device = range_min; device < range_max; device++) {
     try {
       // Request to switch to the next flashable USB port. the reply from the
       // Pico would tell us whether to send or not the uf2 image again.
-      await select_device(device, 500);
-
-      let is_flashed = new Promise((resolve, reject) => {
-        cond_status = function wait_msc_mount(status) {
-          // Reject the promise in case of error.
-          if (status[device] & 0x10) {
-            is_selected.reject(usb_status[status[device] & 0x1f]);
-            return true;
-          }
-          // Wait until the device is flashed completely.
-          if ((status[device] & 0x1f) == 8) {
-            is_selected.resolve(usb_status[status[device] & 0x1f]);
-          }
-          return false;
-        };
-      });
+      await select_device(device, 2000);
 
       // Make a single request which would be split into multiple by TCP
       // protocol and then throttled by LwIP based on how fast we can forward
       // the content to the USB device.
+      console_log(`Flashing content: ${content.byteLength} bytes to flash.`);
       await update_status(await fetch("/flash", {
         method: "POST",
         mode: "same-origin",
@@ -145,17 +170,17 @@ async function send_uf2(name, content) {
       // once the POST buffer is full, which only implies that everything has
       // been queued, not flashed. Wait 500ms at most before assuming that an
       // unreported error occured.
-      let timeout_trigger =
-          asyncTimeout(500, "Flashing process incomplete.");
-      await Promise.race([is_flashed, timeout_trigger]);
+      let wait_flash_complete = wait_for_usb_status(
+        device, 0x08, 120000, "Timeout while waiting for flash complete");
+      await wait_flash_complete;
     } catch(e) {
-      console_log(`Unable to flash device at USB port ${device}.`);
+      console_log(`Unable to flash device at USB port ${device}:\n${e}`);
     }
   }
 
   // Unpower all USB devices after having iterated over all of them. Otherwise
   // the last USB port might remain connected.
-  select_device(USB_DEVICES, 500);
+  select_device(USB_DEVICES, 0);
 }
 
 let flash_all_click_handler = null;
@@ -197,7 +222,7 @@ async function dropFilesHandler(ev) {
     // Disable the button while we are flashing usb devices.
     flashAll.disabled = false;
     for (let file of filesContent) {
-      await send_uf2(file.buffer);
+      await send_uf2(file.name, file.content);
     }
     flashAll.disabled = true;
   }
@@ -225,10 +250,10 @@ function setup() {
   dropzone.addEventListener("drop", dropFilesHandler);
   dropzone.addEventListener("dragover", dropDragOver);
 
-  // Poll the Pico every 100ms to collect new status information about the USB
+  // Poll the Pico every 500ms to collect new status information about the USB
   // devices. This is useful to unlock promises which are waiting for changes in
   // the state of USB devices.
-  status_timer = setInterval(update_status, 1000, undefined);
+  status_timer = setInterval(update_status, 245, undefined);
   stdout_timer = setInterval(update_stdout, 1000, undefined);
 }
 
@@ -254,9 +279,12 @@ window.update_stdout = update_stdout;
 window.update_status = update_status;
 window.setup = setup;
 window.unsetup = unsetup;
+window.set_usb_range = set_usb_range;
+window.break_in_module = break_in_module;
 export {
   update_stdout,
   update_status,
   setup,
-  unsetup
+  unsetup,
+  set_usb_range
 }
