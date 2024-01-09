@@ -47,5 +47,9 @@ int main() {
   printf("Starting Web server loop.\n");
   web_server_loop();
 
+  // Use the on-board LED to report the data status of the USB line.
+  led_init();
+
+
   return 0;
 }

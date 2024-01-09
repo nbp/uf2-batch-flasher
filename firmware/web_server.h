@@ -3,6 +3,11 @@
 
 #include <stdbool.h>
 
+// Functions which are used to manipulate internal pbuf.
+uint8_t* get_postmsg_buffer(void* arg);
+size_t get_postmsg_length(void* arg);
+void free_postmsg(void* arg);
+
 // Setup the web server which then uses IRQ to interrut and call the signal
 // handler each time a response has to be made.
 //

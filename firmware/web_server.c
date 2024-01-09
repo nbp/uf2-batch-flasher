@@ -16,6 +16,9 @@
 // Collect references to callback tasks.
 #include "usb_host.h"
 
+// Some debugging
+#include "input.h"
+
 #include "web_server.h"
 
 // ---------------------------------------------------------
@@ -30,6 +33,7 @@ const char *select_cgi(int index, int num_params, char *params[], char *values[]
     if (strcmp(param, "active_device") == 0) {
       // Select a given USB port.
       uintptr_t idx = (uintptr_t) atoi(value);
+      printf("Queue USB select_device: %u\n", idx);
       queue_usb_task(&select_device_cb, (void*) idx);
     }
   }
@@ -147,6 +151,7 @@ static void* current_connection = NULL;
 static void* current_usb_context = NULL;
 static bool pending_usb_error_report = false;
 static bool pending_usb_request_flash = false;
+static size_t total_bytes_received = 0;
 
 void request_flash(void* arg)
 {
@@ -161,6 +166,7 @@ err_t httpd_post_begin(void* connection, const char* uri, const char* http_reque
                        uint16_t http_request_len, int content_len, char* err_response_uri,
                        uint16_t err_response_uri_len, uint8_t* post_auto_wnd)
 {
+  printf("httpd_post_begin: %s\n", uri);
   LWIP_UNUSED_ARG(http_request);
   LWIP_UNUSED_ARG(http_request_len);
   LWIP_UNUSED_ARG(content_len);
@@ -168,6 +174,7 @@ err_t httpd_post_begin(void* connection, const char* uri, const char* http_reque
   if (current_connection != NULL) {
     // One POST connection is still in progress, reject this new one until the
     // previous is finished.
+    printf("Abort: One POST connection still in progress.\n");
     strncpy(err_response_uri, "/status.json", err_response_uri_len);
     return ERR_ABRT;
   }
@@ -184,19 +191,44 @@ err_t httpd_post_begin(void* connection, const char* uri, const char* http_reque
 
   // Match that the URI.
   if (strcmp(uri, "/flash") != 0) {
+    printf("Abort: Unexpected URI.\n");
     strncpy(err_response_uri, "/status.json", err_response_uri_len);
     return ERR_ABRT;
   }
 
+  printf("Preparing to stream content to the USB mass storage.\n");
   // TODO: transfer meta data, such as content_len or the file names.
+  total_bytes_received = 0;
   pending_usb_error_report = false;
   queue_usb_task(&open_file, current_usb_context);
+#ifdef USE_STREAM_FILE_CONTENT
+  queue_usb_task(&stream_file_content, current_usb_context);
+#else
+#endif
   return ERR_OK;
 }
 
 void write_error(void* arg)
 {
   pending_usb_error_report = true;
+}
+
+uint8_t* get_postmsg_buffer(void* arg)
+{
+  struct pbuf* p = (struct pbuf*) arg;
+  return p->payload;
+}
+
+size_t get_postmsg_length(void* arg)
+{
+  struct pbuf* p = (struct pbuf*) arg;
+  return p->len;
+}
+
+void free_postmsg(void* arg)
+{
+  struct pbuf* p = (struct pbuf*) arg;
+  pbuf_free(p);
 }
 
 err_t httpd_post_receive_data(void* connection, struct pbuf* p)
@@ -208,12 +240,20 @@ err_t httpd_post_receive_data(void* connection, struct pbuf* p)
     return ERR_ABRT;
   }
 
-  pipe_enqueue(p->payload, p->len);
-  queue_usb_task(&write_file_content, current_usb_context);
+#ifdef USE_STREAM_FILE_CONTENT
+  // Data would be dequeued by stream_file_content which is in charge of
+  // writting it to the connected device.
+  pipe_enqueue(p->payload, len);
+  total_bytes_received += len;
+#else
+  total_bytes_received += p->len;
+  struct pbuf* q = pbuf_clone(PBUF_TRANSPORT, PBUF_RAM, p);
+  queue_usb_task(&write_file_content, (void*) q);
+#endif
 
 #if LWIP_HTTPD_POST_MANUAL_WND
   // Update the TCP window to throttle data reception.
-  httpd_post_data_recved(connection, p->len);
+  httpd_post_data_recved(connection, (uint16_t) len);
 #endif
   pbuf_free(p);
   return ERR_OK;
@@ -226,6 +266,7 @@ void httpd_post_finished(void* connection, char* response_uri, uint16_t response
   }
 
   queue_usb_task(&close_file, current_usb_context);
+  printf("POST finished: received %u bytes.\n", total_bytes_received);
 
   const char* return_to = "/status.json";
   strncpy(response_uri, return_to, response_uri_len);

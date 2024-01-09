@@ -415,47 +415,141 @@ bool inquiry_complete_cb(uint8_t dev_addr,
   return true;
 }
 
+static uint8_t write_drive_num = 0;
+static size_t written_bytes = 0;
+
 void open_file(void* arg)
 {
   // TODO: We should somehow get the filename across the web server to here, in
   // order to flash files with the proper name. For example, we do not want to
   // be flashing *.py files as *.uf2 files.
   uint8_t const drive_num = (uint8_t) (uintptr_t) arg;
+  write_drive_num = drive_num;
+  written_bytes = 0;
+
   char file_path[13] = "0:/image.uf2";
   file_path[0] += drive_num;
 
   if (f_open(&file[drive_num], file_path, FA_WRITE | FA_CREATE_ALWAYS) != FR_OK) {
+    printf("USB: open_file(%u): failure.\n", (size_t) drive_num);
     report_status(DEVICE_ERROR_FLASH_OPEN);
     queue_web_task(&write_error, arg);
     return;
   }
 }
 
+// This function writes content provided by the HTTPD stack as a single chunk to
+// be written and free it as soon as the data is written down.
 void write_file_content(void* arg)
 {
-  uint8_t const drive_num = (uint8_t) (uintptr_t) arg;
-
-  // UF2 images are flashed by multiple of 512 bytes.
-  UINT count = 512;
-  uint8_t buf[512];
-  pipe_dequeue(&buf[0], sizeof(buf));
+  uint8_t const drive_num = write_drive_num;
+  uint8_t* buf = get_postmsg_buffer(arg);
+  size_t len = get_postmsg_length(arg);
+  UINT count = len;
 
   if (f_write(&file[drive_num], buf, count, &count) != FR_OK) {
+    printf("USB: write_file_content: failure.\n");
+    queue_web_task(&free_postmsg, arg);
     report_status(DEVICE_ERROR_FLASH_WRITE);
     queue_web_task(&write_error, arg);
     return;
   }
+  queue_web_task(&free_postmsg, arg);
+
+  if (f_sync(&file[drive_num]) != FR_OK) {
+    printf("USB: write_file_content: sync failure.\n");
+    report_status(DEVICE_ERROR_FLASH_WRITE);
+    queue_web_task(&write_error, arg);
+    return;
+  }
+
+  written_bytes += count;
+}
+
+// This function takes over the USB core, and move content from the pipe to the
+// created file. Adding a new usb task will kill this streaming process unless
+// there is still some data to be written.
+void stream_file_content(void* arg)
+{
+  uint8_t const drive_num = (uint8_t) (uintptr_t) arg;
+
+  // UF2 images are flashed by multiple of 512 bytes.
+  uint8_t buf[1024];
+  size_t total = 0;
+
+  while(true) {
+    // TinyUSB Host tasks.
+    tuh_task();
+
+    // Write file content.
+    size_t to_write = pipe_used();
+    if (to_write > 0) {
+      UINT count = sizeof(buf);
+      if (to_write < count) {
+        count = to_write;
+      }
+      pipe_dequeue(&buf[0], count);
+
+      if (f_write(&file[drive_num], buf, count, &count) != FR_OK) {
+        printf("USB: stream_file_content: failure.\n");
+        report_status(DEVICE_ERROR_FLASH_WRITE);
+        queue_web_task(&write_error, arg);
+        return;
+      }
+
+      if (f_sync(&file[drive_num]) != FR_OK) {
+        printf("USB: stream_file_content: sync failure.\n");
+        report_status(DEVICE_ERROR_FLASH_WRITE);
+        queue_web_task(&write_error, arg);
+        return;
+      }
+
+      total += count;
+      continue;
+    }
+
+    // If another usb task is requested, such asclosing the file, then we stop
+    // the current loop and exit properly to resume executing usb tasks after
+    // having ended properly.
+    if (has_usb_task()) {
+      break;
+    }
+
+    sleep_us(1);
+  }
+
+  if (total) {
+    if (f_sync(&file[drive_num]) != FR_OK) {
+      printf("USB: stream_file_content: sync failure.\n");
+      report_status(DEVICE_ERROR_FLASH_WRITE);
+      queue_web_task(&write_error, arg);
+      return;
+    }
+  }
+
+  printf("USB: stream_file_content: %u bytes written.\n", total);
 }
 
 void close_file(void* arg)
 {
   uint8_t const drive_num = (uint8_t) (uintptr_t) arg;
 
-  if (f_close(&file[drive_num]) != FR_OK) {
+  if (f_sync(&file[drive_num]) != FR_OK) {
+    printf("USB: close_file: sync failure.\n");
     report_status(DEVICE_ERROR_FLASH_CLOSE);
     queue_web_task(&write_error, arg);
     return;
   }
+
+  if (f_close(&file[drive_num]) != FR_OK) {
+    printf("USB: close_file: close failure.\n");
+    report_status(DEVICE_ERROR_FLASH_CLOSE);
+    queue_web_task(&write_error, arg);
+    return;
+  }
+
+  printf("USB: close_file: Flashing complete. (%u bytes written)\n",
+         written_bytes);
   report_status(DEVICE_FLASH_COMPLETE);
 }
 

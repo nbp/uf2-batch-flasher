@@ -66,6 +66,7 @@ void open_file(void*);
 
 // Request to flash part of the content to the USB device.
 void write_file_content(void*);
+void stream_file_content(void*);
 
 // Close the file once the flash request is ended.
 void close_file(void*);
