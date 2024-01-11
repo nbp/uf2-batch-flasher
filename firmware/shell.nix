@@ -6,7 +6,7 @@ with pkgs;
 mkShell {
   nativeBuildInputs = [
     # For building transmitter-units
-    picotool pico-sdk cmake python3
+    picotool pico-sdk cmake python3 perl
     gcc-arm-embedded
 
     # Useful tools for debugging
