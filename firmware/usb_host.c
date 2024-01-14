@@ -7,6 +7,10 @@
 
 #include "pico/multicore.h"
 
+// Used for doing spin loops which are awaiting changes in the TinyUSB internal
+// machinery.
+#include "pico/time.h"
+
 #include "pio_usb.h"
 #include "host/usbh.h" // Config ID for tuh_config.
 
@@ -586,7 +590,12 @@ void baud_rate_set_cb(struct tuh_xfer_s* unused) {
 
 void force_unmount_cdc(void* arg) {
   (void) arg;
-  report_status(DEVICE_BOOTSEL_COMPLETE);
+
+  // Wait before disabling the data lines.
+  absolute_time_t timeout = make_timeout_time_ms(50);
+  while (absolute_time_diff_us(get_absolute_time(), timeout) > 0) {
+    tuh_task();
+  }
 
   // Disable data pins, and reenable data pins once the cdc_umount callback is
   // registered. Disabling is used to work-around an issue where the host
@@ -626,6 +635,19 @@ void select_bootsel(void* arg) {
 
 void restore_usb_data(void* arg) {
   (void) arg;
+  report_status(DEVICE_BOOTSEL_COMPLETE);
+
+  // The CDC has been unmounted properly, but plugging the data lines
+  // immediately after confuses TinyUSB. This might be caused by the fact that
+  // the device is in the process of rebooting and that it might not yet answer
+  // correctly to TinyUSB requests. Thus we wait a bit before restoring the data
+  // lines.
+  absolute_time_t timeout = make_timeout_time_ms(250);
+  while (absolute_time_diff_us(get_absolute_time(), timeout) > 0) {
+    tuh_task();
+  }
+
+  printf("Re-enable data connection.\n");
   enable_usb_data();
 }
 
