@@ -13,13 +13,13 @@ typedef enum {
   // Switch to BootSelect mode.
   DEVICE_BOOTSEL_REQUEST,
   DEVICE_BOOTSEL_COMPLETE,
-  // Request data transmition from the Web client.
-  DEVICE_FLASH_REQUEST,
   // Device is processing the transmitted data.
   DEVICE_FLASH_DISK_INIT,
   DEVICE_FLASH_DISK_READ_BUSY,
   DEVICE_FLASH_DISK_WRITE_BUSY,
   DEVICE_FLASH_DISK_IO_COMPLETE,
+  // Request data transmition from the Web client.
+  DEVICE_FLASH_REQUEST,
   // Data succesfully flashed to the device.
   DEVICE_FLASH_COMPLETE,
 

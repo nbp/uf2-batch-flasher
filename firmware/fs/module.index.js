@@ -26,11 +26,11 @@ let usb_status = [
   "DEVICE_UNKNOWN",
   "DEVICE_BOOTSEL_REQUEST",
   "DEVICE_BOOTSEL_COMPLETE",
-  "DEVICE_FLASH_REQUEST",
   "DEVICE_FLASH_DISK_INIT",
   "DEVICE_FLASH_DISK_READ_BUSY",
   "DEVICE_FLASH_DISK_WRITE_BUSY",
   "DEVICE_FLASH_DISK_IO_COMPLETE",
+  "DEVICE_FLASH_REQUEST",
   "DEVICE_FLASH_COMPLETE",
   "???", "???", "???", "???", "???", "???", "???",
   "DEVICE_ERROR_BOOTSEL_MISS",
@@ -47,6 +47,7 @@ let usb_status = [
 const USB_DEVICES = 64;
 
 // Function which resolves or rejects a promise if the condition is met.
+let last_status = [];
 let wait_for_status = [];
 async function update_status(status) {
   if (!status) {
@@ -68,6 +69,7 @@ async function update_status(status) {
   }
 
   wait_for_status = wait_for_status.filter(query => !query(status));
+  last_status = status;
   return status;
 }
 
@@ -95,7 +97,7 @@ async function wait_for_usb_status(device, expected_status, timeout, msg) {
         }
       } else {
         // Wait until a state is reached.
-        if ((status[device] & 0x0f) == expected_status) {
+        if ((status[device] & 0x0f) >= expected_status) {
           resolve(status[device]);
           return true;
         }
@@ -103,7 +105,9 @@ async function wait_for_usb_status(device, expected_status, timeout, msg) {
       return false;
     };
 
-    wait_for_status.push(check_for_expectation);
+    if (!check_for_expectation(last_status)) {
+      wait_for_status.push(check_for_expectation);
+    }
   });
 
   try {
