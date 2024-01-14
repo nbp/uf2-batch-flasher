@@ -122,19 +122,30 @@ async function wait_for_usb_status(device, expected_status, timeout, msg) {
   }
 }
 
-async function select_device(device, timeout) {
+async function select_device(device, cdc_timeout, msc_timeout) {
   await update_status(await fetch(`/select.cgi?active_device=${device}`));
 
   if (device >= USB_DEVICES) {
     return;
   }
 
-  if (timeout == 0) {
+  if (cdc_timeout == 0 || msc_timeout == 0) {
     return;
   }
 
+  // Note, in case of MSC device, the wait would be removed as the received code
+  // is higher than the CDC code.
+  await wait_for_usb_status(
+    device, 0x01, cdc_timeout, "Timeout while waiting for BOOTSEL request");
+  await wait_for_usb_status(
+    device, 0x02, cdc_timeout, "Timeout while waiting for BOOTSEL mode");
+
+  // let wait_for_msc_mounted = wait_for_usb_status(
+  //   device, 0x40, timeout, "Timeout while waiting for USB Mass Storage Class");
+  // await wait_for_msc_mounted;
+
   let flash_request = wait_for_usb_status(
-    device, 0x03, timeout, "Timeout while waiting for flash request");
+    device, 0x07, msc_timeout, "Timeout while waiting for flash request");
   await flash_request;
 }
 
@@ -145,6 +156,10 @@ function set_usb_range(min, max) {
   range_max = max;
 }
 
+let cdc_timeout = 2000;
+let msc_timeout = 30000;
+let flash_timeout = 120000;
+
 // content is an array buffer, typed array, blob, json or text.
 async function send_uf2(name, content) {
 
@@ -152,7 +167,7 @@ async function send_uf2(name, content) {
     try {
       // Request to switch to the next flashable USB port. the reply from the
       // Pico would tell us whether to send or not the uf2 image again.
-      await select_device(device, 2000);
+      await select_device(device, cdc_timeout, msc_timeout);
 
       // Make a single request which would be split into multiple by TCP
       // protocol and then throttled by LwIP based on how fast we can forward
@@ -175,7 +190,7 @@ async function send_uf2(name, content) {
       // been queued, not flashed. Wait 500ms at most before assuming that an
       // unreported error occured.
       let wait_flash_complete = wait_for_usb_status(
-        device, 0x08, 120000, "Timeout while waiting for flash complete");
+        device, 0x08, flash_timeout, "Timeout while waiting for flash complete");
       await wait_flash_complete;
     } catch(e) {
       console_log(`Unable to flash device at USB port ${device}:\n${e}`);
