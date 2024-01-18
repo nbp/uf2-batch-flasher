@@ -156,9 +156,10 @@ function set_usb_range(min, max) {
   range_max = max;
 }
 
-let cdc_timeout = 2000;
-let msc_timeout = 30000;
-let flash_timeout = 120000;
+let sec = 1000, min = 60 * sec;
+let cdc_timeout = 2 * sec;
+let msc_timeout = 1 * min;
+let flash_timeout = 20 * min;
 
 // content is an array buffer, typed array, blob, json or text.
 async function send_uf2(name, content) {
@@ -199,7 +200,7 @@ async function send_uf2(name, content) {
 
   // Unpower all USB devices after having iterated over all of them. Otherwise
   // the last USB port might remain connected.
-  select_device(USB_DEVICES, 0);
+  select_device(USB_DEVICES, 0, 0);
 }
 
 let flash_all_click_handler = null;
