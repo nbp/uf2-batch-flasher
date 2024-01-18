@@ -157,6 +157,10 @@ usb_status_t get_usb_device_status(size_t d) {
   return usb_status[d];
 }
 
+bool is_status_error() {
+  return (usb_status[active_device] & 0x10) != 0;
+}
+
 void disable_usb_power() {
   gpio_put(PIN_ENABLE_POWER, true);
 }
@@ -271,6 +275,8 @@ static bool disk_io_complete(uint8_t dev_addr, tuh_msc_complete_data_t const * c
 // while the current transaction has not ended yet.
 static void wait_for_disk_io(BYTE pdrv)
 {
+  // TODO: We should add a timeout to clear the value after some period of time,
+  // in order to avoid no longer answering the web server thread.
   while(tuh_disk_busy[pdrv]) {
     tuh_task();
   }
@@ -451,21 +457,33 @@ void write_file_content(void* arg)
   size_t len = get_postmsg_length(arg);
   UINT count = len;
 
-  if (f_write(&file[drive_num], buf, count, &count) != FR_OK) {
-    printf("USB: write_file_content: failure.\n");
+  if (is_status_error()) {
+    queue_web_task(&free_postmsg, arg);
+    return;
+  }
+
+  FRESULT res = f_write(&file[drive_num], buf, count, &count);
+  if (res != FR_OK) {
+    printf("USB: write_file_content: write failure(err = %d).\n", res);
     queue_web_task(&free_postmsg, arg);
     report_status(DEVICE_ERROR_FLASH_WRITE);
     queue_web_task(&write_error, arg);
     return;
   }
+
   queue_web_task(&free_postmsg, arg);
 
-  if (f_sync(&file[drive_num]) != FR_OK) {
-    printf("USB: write_file_content: sync failure.\n");
+  /*
+  // Calling f_sync would commit unfinished UF2 chunks, which might cause issues
+  // on the RP2040 side, as these might be incomplete or corrupted.
+  res = f_sync(&file[drive_num]);
+  if (res != FR_OK) {
+    printf("USB: write_file_content: sync failure(err = %d).\n", res);
     report_status(DEVICE_ERROR_FLASH_WRITE);
     queue_web_task(&write_error, arg);
     return;
   }
+  */
 
   written_bytes += count;
 }
@@ -536,6 +554,10 @@ void stream_file_content(void* arg)
 
 void close_file(void* arg)
 {
+  if (is_status_error()) {
+    return;
+  }
+
   uint8_t const drive_num = (uint8_t) (uintptr_t) arg;
 
   if (f_sync(&file[drive_num]) != FR_OK) {
