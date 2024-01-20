@@ -3,7 +3,7 @@
 #include <pico/time.h>
 #include <pico/mutex.h>
 
-#define OUT_SIZE 8192
+#define OUT_SIZE 32 * 1024
 
 typedef struct {
   size_t start, end;

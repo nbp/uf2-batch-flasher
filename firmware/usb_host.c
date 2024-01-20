@@ -42,6 +42,9 @@
 
 #include "usb_host.h"
 
+//#define LOG_DEBUG(...) printf(__VA_ARGS__)
+#define LOG_DEBUG(...)
+
 #define $UNUSED __attribute__((__unused__))
 
 //---------------------------------------------------------------------
@@ -122,7 +125,7 @@ void report_status(usb_status_t st) {
   usb_status_t status = usb_status[active_device];
   status = (status & DEVICE_IS_MOUNTED) | st;
   usb_status[active_device] = status;
-  //printf("usb[%d] = %x\n", active_device, status);
+  LOG_DEBUG("usb[%d] = %x\n", active_device, status);
 }
 
 void set_mount_status(usb_status_t st, bool set) {
@@ -134,12 +137,12 @@ void set_mount_status(usb_status_t st, bool set) {
   } else {
     usb_status[active_device] &= ~st;
   }
-  printf("usb[%d] = %x\n", active_device, usb_status[active_device]);
+  LOG_DEBUG("usb[%d] = %x\n", active_device, usb_status[active_device]);
 }
 
 void reset_status() {
   usb_status[active_device] = DEVICE_UNKNOWN;
-  printf("usb[%d] = %x\n", active_device, usb_status[active_device]);
+  LOG_DEBUG("usb[%d] = %x\n", active_device, usb_status[active_device]);
 }
 
 void reset_usb_status() {
@@ -280,6 +283,7 @@ static void wait_for_disk_io(BYTE pdrv)
   while(tuh_disk_busy[pdrv]) {
     tuh_task();
   }
+  LOG_DEBUG("Disk IO: Complete\n");
 }
 
 // Required by `mount_volume`.
@@ -303,6 +307,8 @@ DRESULT disk_read(BYTE pdrv, BYTE *buff, LBA_t sector, UINT count)
 {
   report_status(DEVICE_FLASH_DISK_READ_BUSY);
 
+  LOG_DEBUG("Disk Read: %p\n  Sectors: %lu\n  Size: %lu\n",
+            buff, sector, count);
 	uint8_t const dev_addr = pdrv + 1;
 	uint8_t const lun = 0;
 	tuh_disk_busy[pdrv] = true;
@@ -317,6 +323,8 @@ DRESULT disk_write(BYTE pdrv, const BYTE *buff, LBA_t sector, UINT count)
 {
   report_status(DEVICE_FLASH_DISK_WRITE_BUSY);
 
+  LOG_DEBUG("Disk Write: %p\n  Sectors: %lu\n  Size: %lu\n",
+            buff, sector, count);
 	uint8_t const dev_addr = pdrv + 1;
 	uint8_t const lun = 0;
 	tuh_disk_busy[pdrv] = true;
@@ -462,6 +470,7 @@ void write_file_content(void* arg)
     return;
   }
 
+  LOG_DEBUG("f_write:\n");
   FRESULT res = f_write(&file[drive_num], buf, count, &count);
   if (res != FR_OK) {
     printf("USB: write_file_content: write failure(err = %d).\n", res);
@@ -473,9 +482,10 @@ void write_file_content(void* arg)
 
   queue_web_task(&free_postmsg, arg);
 
-  /*
+#ifdef WRITE_FILE_CONTENT_USE_FSYNC
   // Calling f_sync would commit unfinished UF2 chunks, which might cause issues
   // on the RP2040 side, as these might be incomplete or corrupted.
+  LOG_DEBUG("f_sync:\n");
   res = f_sync(&file[drive_num]);
   if (res != FR_OK) {
     printf("USB: write_file_content: sync failure(err = %d).\n", res);
@@ -483,8 +493,9 @@ void write_file_content(void* arg)
     queue_web_task(&write_error, arg);
     return;
   }
-  */
+#endif
 
+  LOG_DEBUG("USB: write_file_content: %u\n", count);
   written_bytes += count;
 }
 
@@ -560,6 +571,7 @@ void close_file(void* arg)
 
   uint8_t const drive_num = (uint8_t) (uintptr_t) arg;
 
+  LOG_DEBUG("f_sync:\n");
   if (f_sync(&file[drive_num]) != FR_OK) {
     printf("USB: close_file: sync failure.\n");
     report_status(DEVICE_ERROR_FLASH_CLOSE);
@@ -567,6 +579,7 @@ void close_file(void* arg)
     return;
   }
 
+  LOG_DEBUG("f_close:\n");
   if (f_close(&file[drive_num]) != FR_OK) {
     printf("USB: close_file: close failure.\n");
     report_status(DEVICE_ERROR_FLASH_CLOSE);
