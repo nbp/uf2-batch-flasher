@@ -252,6 +252,15 @@ void test_usb_power() {
   select_device(USB_DEVICES);
 }
 
+// TinyUSB Host aware sleeping function
+void tuh_sleep_ms(size_t wait_ms) {
+  absolute_time_t timeout = make_timeout_time_ms(wait_ms);
+  while (absolute_time_diff_us(get_absolute_time(), timeout) > 0) {
+    tuh_task();
+  }
+}
+
+
 //---------------------------------------------------------------------
 // FatFS diskio implementation
 // See tinyusb/lib/fatfs/source/diskio.h
@@ -673,10 +682,7 @@ void force_unmount_cdc(void* arg) {
   (void) arg;
 
   // Wait before disabling the data lines.
-  absolute_time_t timeout = make_timeout_time_ms(50);
-  while (absolute_time_diff_us(get_absolute_time(), timeout) > 0) {
-    tuh_task();
-  }
+  tuh_sleep_ms(50);
 
   // Disable data pins, and reenable data pins once the cdc_umount callback is
   // registered. Disabling is used to work-around an issue where the host
@@ -693,6 +699,9 @@ void force_unmount_cdc(void* arg) {
 
 void select_bootsel(void* arg) {
   uint8_t idx = (uint8_t) (uintptr_t) arg;
+  // Give a bit of time to the powered device to be able to fully setup the
+  // baud-rate watcher.
+  tuh_sleep_ms(250);
 
   // If reached, then set the baud rate such that if this is a Raspberry PI Pico
   // (RP2040), then the switch of the baud rate will reset the board in bootset
@@ -723,10 +732,7 @@ void restore_usb_data(void* arg) {
   // the device is in the process of rebooting and that it might not yet answer
   // correctly to TinyUSB requests. Thus we wait a bit before restoring the data
   // lines.
-  absolute_time_t timeout = make_timeout_time_ms(250);
-  while (absolute_time_diff_us(get_absolute_time(), timeout) > 0) {
-    tuh_task();
-  }
+  tuh_sleep_ms(250);
 
   printf("Re-enable data connection.\n");
   enable_usb_data();
