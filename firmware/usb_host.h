@@ -10,7 +10,10 @@ typedef enum {
   // The device has not yet been tested.
   DEVICE_UNKNOWN = 0x00,
 
-  // Switch to BootSelect mode.
+  // The device has just been selected and is ready to switch to Boot Select
+  // mode.
+  DEVICE_SELECTED,
+  // Switch to Boot Select mode.
   DEVICE_BOOTSEL_REQUEST,
   DEVICE_BOOTSEL_COMPLETE,
   // Device is processing the transmitted data.
@@ -46,6 +49,9 @@ typedef enum {
 } usb_status_t;
 
 usb_status_t get_usb_device_status(size_t d);
+
+// Clear all recorded status in order to start on a fresh ground.
+void clear_usb_status_cb(void* arg);
 
 // Given an uintptr_t as argument, which represent the index of the USB port to
 // enable, switch off the currently active device and enable the requested

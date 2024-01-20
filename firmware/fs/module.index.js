@@ -24,6 +24,7 @@ function asyncTimeout(timeout) {
 // Keep this list in sync with usb_host.h
 let usb_status = [
   "DEVICE_UNKNOWN",
+  "DEVICE_SELECTED",
   "DEVICE_BOOTSEL_REQUEST",
   "DEVICE_BOOTSEL_COMPLETE",
   "DEVICE_FLASH_DISK_INIT",
@@ -32,7 +33,7 @@ let usb_status = [
   "DEVICE_FLASH_DISK_IO_COMPLETE",
   "DEVICE_FLASH_REQUEST",
   "DEVICE_FLASH_COMPLETE",
-  "???", "???", "???", "???", "???", "???", "???",
+  "???", "???", "???", "???", "???", "???",
   "DEVICE_ERROR_BOOTSEL_MISS",
   "DEVICE_ERROR_FLASH_INQUIRY",
   "DEVICE_ERROR_FLASH_MOUNT",
@@ -75,6 +76,9 @@ async function update_status(status) {
 
 async function wait_for_usb_status(device, expected_status, timeout, msg) {
   let no_more_checks = false;
+  if (typeof expected_status === "string") {
+    expected_status = usb_status.indexOf(expected_status);
+  }
   let wait = new Promise((resolve, reject) => {
     function check_for_expectation(status) {
       //console_log(`Check usb ${device} status (=${status[device].toString(16)}) for ${expected_status.toString(16)}`);
@@ -89,7 +93,12 @@ async function wait_for_usb_status(device, expected_status, timeout, msg) {
         return true;
       }
 
-      if (expected_status >= 0x20) {
+      if (expected_status == 0) {
+        if (status[device] == expected_status) {
+          resolve(status[device]);
+          return true;
+        }
+      } else if (expected_status >= 0x20) {
         // Wait until the device is mounted.
         if (status[device] & expected_status == expected_status) {
           resolve(status[device]);
@@ -122,6 +131,11 @@ async function wait_for_usb_status(device, expected_status, timeout, msg) {
   }
 }
 
+let sec = 1000, min = 60 * sec;
+let cdc_timeout = 2 * sec;
+let msc_timeout = 1 * min;
+let flash_timeout = 20 * min;
+
 async function select_device(device, cdc_timeout, msc_timeout) {
   await update_status(await fetch(`/select.cgi?active_device=${device}`));
 
@@ -133,20 +147,36 @@ async function select_device(device, cdc_timeout, msc_timeout) {
     return;
   }
 
-  // Note, in case of MSC device, the wait would be removed as the received code
+  // Informing that the board has selected the device, before awaiting any
+  // device responses.
+  await wait_for_usb_status(
+    device, "DEVICE_SELECTED", 1 * min,
+    "Timeout while waiting for the device to be selected");
+
+  // Note, in case of MSC device, the wait would be skipped as the received code
   // is higher than the CDC code.
   await wait_for_usb_status(
-    device, 0x01, cdc_timeout, "Timeout while waiting for BOOTSEL request");
+    device, "DEVICE_BOOTSEL_REQUEST", cdc_timeout,
+    "Timeout while waiting for BOOTSEL request");
   await wait_for_usb_status(
-    device, 0x02, cdc_timeout, "Timeout while waiting for BOOTSEL mode");
+    device, "DEVICE_BOOTSEL_COMPLETE", cdc_timeout,
+    "Timeout while waiting for BOOTSEL mode");
 
   // let wait_for_msc_mounted = wait_for_usb_status(
   //   device, 0x40, timeout, "Timeout while waiting for USB Mass Storage Class");
   // await wait_for_msc_mounted;
 
   let flash_request = wait_for_usb_status(
-    device, 0x07, msc_timeout, "Timeout while waiting for flash request");
+    device, "DEVICE_FLASH_REQUEST", msc_timeout,
+    "Timeout while waiting for flash request");
   await flash_request;
+}
+
+async function clear_status() {
+  await select_device(-1, 0, 0);
+  await wait_for_usb_status(
+    0, "DEVICE_UNKNOWN", 1000,
+    "Timeout while waiting for all USB status to be cleared");
 }
 
 let range_min = 0;
@@ -156,13 +186,9 @@ function set_usb_range(min, max) {
   range_max = max;
 }
 
-let sec = 1000, min = 60 * sec;
-let cdc_timeout = 2 * sec;
-let msc_timeout = 1 * min;
-let flash_timeout = 20 * min;
-
 // content is an array buffer, typed array, blob, json or text.
 async function send_uf2(name, content) {
+  await clear_status();
 
   for (let device = range_min; device < range_max; device++) {
     try {
@@ -191,7 +217,8 @@ async function send_uf2(name, content) {
       // been queued, not flashed. Wait 500ms at most before assuming that an
       // unreported error occured.
       let wait_flash_complete = wait_for_usb_status(
-        device, 0x08, flash_timeout, "Timeout while waiting for flash complete");
+        device, "DEVICE_FLASH_COMPLETE", flash_timeout,
+        "Timeout while waiting for flash complete");
       await wait_flash_complete;
     } catch(e) {
       console_log(`Unable to flash device at USB port ${device}:\n${e}`);
@@ -300,7 +327,11 @@ window.update_status = update_status;
 window.setup = setup;
 window.unsetup = unsetup;
 window.set_usb_range = set_usb_range;
-window.break_in_module = break_in_module;
+window.set_usb_timeouts = function set_usb_timeouts(cdc, msc, flash) {
+  cdc_timeout = cdc|0;
+  msc_timeout = msc|0;
+  flash_timeout = flash|0;
+};
 export {
   update_stdout,
   update_status,

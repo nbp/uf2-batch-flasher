@@ -145,7 +145,7 @@ void reset_status() {
   LOG_DEBUG("usb[%d] = %x\n", active_device, usb_status[active_device]);
 }
 
-void reset_usb_status() {
+void reset_all_status() {
   // By default we do not know anything about any of the plugged devices.
   for(size_t d = 0; d < USB_DEVICES; d++) {
     usb_status[d] = DEVICE_UNKNOWN;
@@ -158,6 +158,10 @@ usb_status_t get_usb_device_status(size_t d) {
     return DEVICE_UNKNOWN;
   }
   return usb_status[d];
+}
+
+usb_status_t get_current_usb_device_status() {
+  return get_usb_device_status(active_device);
 }
 
 bool is_status_error() {
@@ -215,7 +219,7 @@ void select_device(size_t device) {
   // Connect the power and data pins of the selected device.
   if (active_device < USB_DEVICES) {
     printf("Select USB device: %d\n", active_device);
-    reset_status();
+    report_status(DEVICE_SELECTED);
 
     // Set all pins used for selecting a device.
     const uint select_mask =
@@ -232,6 +236,10 @@ void select_device(size_t device) {
     sleep_ms(1);
     enable_usb_data();
   }
+}
+
+void clear_usb_status_cb(void* arg) {
+  reset_all_status();
 }
 
 void select_device_cb(void* arg) {
@@ -644,6 +652,9 @@ void close_file(void* arg)
 
   printf("USB: close_file: Flashing complete. (%u bytes written)\n",
          written_bytes);
+
+  // Once flashing is complete, the device might automatically reboot, and
+  // listen to CDC once more.
   report_status(DEVICE_FLASH_COMPLETE);
 }
 
@@ -699,6 +710,8 @@ void force_unmount_cdc(void* arg) {
 
 void select_bootsel(void* arg) {
   uint8_t idx = (uint8_t) (uintptr_t) arg;
+  report_status(DEVICE_BOOTSEL_REQUEST);
+
   // Give a bit of time to the powered device to be able to fully setup the
   // baud-rate watcher.
   tuh_sleep_ms(250);
@@ -707,7 +720,6 @@ void select_bootsel(void* arg) {
   // (RP2040), then the switch of the baud rate will reset the board in bootset
   // mode. Making the board open as a mass storage class device, ready to accept
   // a uf2 image.
-  report_status(DEVICE_BOOTSEL_REQUEST);
   printf("Set BAUD rate to 1200, to switch to BOOTSEL mode (%u)\n", idx);
   cdc_line_coding_t line_coding = {
     1200, // Special value used by RPi Pico to reset to BOOTSEL mode.
@@ -742,7 +754,12 @@ void tuh_cdc_mount_cb(uint8_t idx)
 {
   printf("tuh_cdc_mount_cb: %u\n", idx);
   set_mount_status(DEVICE_CDC_MOUNTED, true);
-  queue_usb_task(&select_bootsel, (void*) (uintptr_t) idx);
+
+  // Only switch to BOOTSEL mode if the device has been selected recently, not
+  // not if the device rebooted after being flashed.
+  if ((get_current_usb_device_status() & 0x1f) == DEVICE_SELECTED) {
+    queue_usb_task(&select_bootsel, (void*) (uintptr_t) idx);
+  }
 }
 
 // Weakly linked, thus not causing errors if undefined.
@@ -794,7 +811,7 @@ static semaphore_t usb_host_initialized;
 
 void usb_host_main() {
   usb_gpio_init();
-  reset_usb_status();
+  reset_all_status();
   test_usb_power();
   sleep_ms(10);
 

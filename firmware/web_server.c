@@ -32,9 +32,14 @@ const char *select_cgi(int index, int num_params, char *params[], char *values[]
     const char *value = values[p];
     if (strcmp(param, "active_device") == 0) {
       // Select a given USB port.
-      uintptr_t idx = (uintptr_t) atoi(value);
-      printf("Queue USB select_device: %u\n", idx);
-      queue_usb_task(&select_device_cb, (void*) idx);
+      intptr_t idx = (intptr_t) atoi(value);
+      if (idx >= 0) {
+        printf("Queue USB select_device: %u\n", idx);
+        queue_usb_task(&select_device_cb, (void*) idx);
+      } else {
+        printf("Clear all usb status\n");
+        queue_usb_task(&clear_usb_status_cb, (void*) 0);
+      }
     }
   }
   return "/status.json";
