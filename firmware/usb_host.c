@@ -458,6 +458,11 @@ void open_file(void* arg)
 
 // This function writes content provided by the HTTPD stack as a single chunk to
 // be written and free it as soon as the data is written down.
+//
+// It writes the data in 2 times in order to align the cached content with the
+// content manipulated by the device, and also gives some time to the device to
+// write this content back to the flash either by sleeping or waiting on f_sync
+// completion.
 void write_file_content(void* arg)
 {
   uint8_t const drive_num = write_drive_num;
@@ -470,33 +475,74 @@ void write_file_content(void* arg)
     return;
   }
 
-  LOG_DEBUG("f_write:\n");
-  FRESULT res = f_write(&file[drive_num], buf, count, &count);
-  if (res != FR_OK) {
-    printf("USB: write_file_content: write failure(err = %d).\n", res);
-    queue_web_task(&free_postmsg, arg);
-    report_status(DEVICE_ERROR_FLASH_WRITE);
-    queue_web_task(&write_error, arg);
-    return;
-  }
+  size_t offset = 0;
 
-  queue_web_task(&free_postmsg, arg);
-
+#define WRITE_FILE_CONTENT_USE_FSYNC 1
 #ifdef WRITE_FILE_CONTENT_USE_FSYNC
-  // Calling f_sync would commit unfinished UF2 chunks, which might cause issues
-  // on the RP2040 side, as these might be incomplete or corrupted.
-  LOG_DEBUG("f_sync:\n");
-  res = f_sync(&file[drive_num]);
-  if (res != FR_OK) {
-    printf("USB: write_file_content: sync failure(err = %d).\n", res);
-    report_status(DEVICE_ERROR_FLASH_WRITE);
-    queue_web_task(&write_error, arg);
-    return;
+  // Raspberry Pi Pico: When flashing UF2 content, each chunk transmits 512
+  // bytes of UF2 data which will carry 256 bytes of useful payload to be
+  // written at once, per flash sector of 4k.
+  //
+  // Thus every 8k of transmitted content, a write back will happen on the the
+  // flash of the raspberry Pi Pico devices connected to the UF2 Batch flasher.
+  const size_t chunk_size = 8 * 1024;
+  size_t written_next = written_bytes + count;
+  size_t chunk_overflow = written_next & (chunk_size - 1);
+  if (chunk_overflow < count) {
+    UINT align_write = count - chunk_overflow;
+    count -= align_write;
+
+    // This call to f_write does not send every bytes at once, because we intend
+    // to call f_sync to wait for the write to be completed. However, if we have
+    // incomplete chunks pending f_sync would attempt to write these chunks which
+    // would cause unexpected state on the receiving device when the file is an
+    // UF2 file.
+    LOG_DEBUG("f_write: %u bytes\n", align_write);
+    FRESULT res = f_write(&file[drive_num], &buf[offset], align_write, &align_write);
+    if (res != FR_OK) {
+      printf("USB: write_file_content: write chunk failure (err = %d).\n", res);
+      queue_web_task(&free_postmsg, arg);
+      report_status(DEVICE_ERROR_FLASH_WRITE);
+      queue_web_task(&write_error, arg);
+      return;
+    }
+    written_bytes += align_write;
+    offset += align_write;
+
+    // Conservative estimate of the time needed to flash the QSPI flash.
+# define US_PER_FLASH_SECTOR 32 // = 4096 bytes / 125 MHz
+# ifdef US_PER_FLASH_SECTOR
+    sleep_us(US_PER_FLASH_SECTOR);
+# else
+    // NOTE: f_sync does not seems to work with Raspberry Pi Pico devices. While
+    // this is good for flash drives, this induces write failures later one.
+    LOG_DEBUG("f_sync:\n");
+    res = f_sync(&file[drive_num]);
+    if (res != FR_OK) {
+      printf("USB: write_file_content: sync failure (err = %d).\n", res);
+      report_status(DEVICE_ERROR_FLASH_WRITE);
+      queue_web_task(&write_error, arg);
+      return;
+    }
+# endif
   }
 #endif
 
-  LOG_DEBUG("USB: write_file_content: %u\n", count);
-  written_bytes += count;
+  if (count) {
+    LOG_DEBUG("f_write: %u bytes\n", count);
+    FRESULT res = f_write(&file[drive_num], &buf[offset], count, &count);
+    if (res != FR_OK) {
+      printf("USB: write_file_content: write overflow failure (err = %d).\n", res);
+      queue_web_task(&free_postmsg, arg);
+      report_status(DEVICE_ERROR_FLASH_WRITE);
+      queue_web_task(&write_error, arg);
+      return;
+    }
+    written_bytes += count;
+  }
+
+  queue_web_task(&free_postmsg, arg);
+  LOG_DEBUG("USB: write_file_content: %u bytes (%u total)\n", len, written_bytes);
 }
 
 // This function takes over the USB core, and move content from the pipe to the
