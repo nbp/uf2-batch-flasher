@@ -37,7 +37,7 @@ const char *select_cgi(int index, int num_params, char *params[], char *values[]
         printf("Queue USB select_device: %u\n", idx);
         queue_usb_task(&select_device_cb, (void*) idx);
       } else {
-        printf("Clear all usb status\n");
+        printf("Queue reset all USB status\n");
         queue_usb_task(&clear_usb_status_cb, (void*) 0);
       }
     }
@@ -239,9 +239,11 @@ void free_postmsg(void* arg)
 err_t httpd_post_receive_data(void* connection, struct pbuf* p)
 {
   if (connection != current_connection) {
+    printf("POST connection does not match.\n");
     return ERR_VAL;
   }
   if (pending_usb_error_report) {
+    printf("POST connection aborted for USB error.\n");
     return ERR_ABRT;
   }
 
