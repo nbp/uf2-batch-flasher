@@ -295,12 +295,23 @@ static bool disk_io_complete(uint8_t dev_addr, tuh_msc_complete_data_t const * c
 // while the current transaction has not ended yet.
 static void wait_for_disk_io(BYTE pdrv)
 {
-  // TODO: We should add a timeout to clear the value after some period of time,
-  // in order to avoid no longer answering the web server thread.
-  while(tuh_disk_busy[pdrv]) {
+  absolute_time_t timeout = make_timeout_time_ms(500);
+  while (true) {
+    if (absolute_time_diff_us(get_absolute_time(), timeout) <= 0) {
+      printf("Disk IO: Timed out!\n");
+      tuh_disk_busy[pdrv] = false;
+      // TODO: Should we raise an error? Probably yes.
+      break;
+    }
+    if (!tuh_disk_busy[pdrv]) {
+      // I/O is complete!
+      LOG_DEBUG("Disk IO: Complete\n");
+      break;
+    }
+
+    // Watch for USB acknowledgement.
     tuh_task();
   }
-  LOG_DEBUG("Disk IO: Complete\n");
 }
 
 // Required by `mount_volume`.
