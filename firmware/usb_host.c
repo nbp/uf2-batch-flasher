@@ -675,6 +675,13 @@ void tuh_msc_mount_cb(uint8_t dev_addr)
   printf("tuh_msc_mount_cb: %u\n", dev_addr);
   set_mount_status(DEVICE_MSC_MOUNTED, true);
 
+  // We could reach this state either coming from the DEVICE_SELECTED context or
+  // after a DEVICE_BOOTSEL_COMPLETE, any other state would skip the flashing
+  // procedure.
+  if ((get_current_usb_device_status() & 0x1f) >= DEVICE_FLASH_REQUEST) {
+    return;
+  }
+
   // Query information about the filesystem of the device, and mount it using
   // f_mount before manipulating it.
   uint8_t const lun = 0;
