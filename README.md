@@ -36,7 +36,7 @@ In the root of the repository, type the following command to start a development
 environment:
 
 ```shell
-$ nix shell
+$ nix develop
 ```
 
 This development environement will setup the expected environment variable and
