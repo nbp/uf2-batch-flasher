@@ -186,11 +186,69 @@ function set_usb_range(min, max) {
   range_max = max;
 }
 
+// Return the list of offsets which would have to be patched before sending the
+// content to each device.
+function locate_uf2_arm_halt(content) {
+  // ARM has a HLT instruction which is used for interrupting the program, and
+  // which has a 16 bits payload.
+  const hlt_op = 0b11010100010;
+  const mask = 0b1010101010101010;
+  const pattern = (hlt_op << 21) | (mask << 5);
+
+  const hh = (pattern >> 24) & 0xff;
+  const hl = (pattern >> 16) & 0xff;
+  const lh = (pattern >> 8) & 0xff;
+  const ll = pattern & 0xff;
+
+  content = new UInt8Array(content);
+  let offsets = [];
+
+  // UF2 file format is divided in chunks of 512 bytes, with 32 bytes of header
+  // and 4 bytes of footer. Thus we limit ourself to patch the data within each
+  // UF2 chunk.
+  for (let off = 0; off + 511 < content.length;) {
+    // Skip the UF2 header.
+    off += 32;
+    // Check and patch the data.
+    for (; (off % 512) < 508; off += 4) {
+      // NOTE: Little Endian encoding of constants.
+      if (content[off][0] != ll ||
+          content[off][1] != lh ||
+          content[off][2] != hl ||
+          content[off][3] != hh) {
+        continue;
+      }
+
+      offsets.push(off);
+    }
+    // Skip the footer.
+    off += 4;
+  }
+
+  return offsets;
+}
+
 // content is an array buffer, typed array, blob, json or text.
 async function send_uf2(name, content) {
+  // Walk the uf2 content to locate any HALT instruction with a special code to
+  // replace it by the index of the device.
+  const offsets = locate_uf2_arm_halt(content);
+
   await clear_status();
 
   for (let device = range_min; device < range_max; device++) {
+
+    // Patch the content with the device index.
+    if (offsets.length) {
+      let buffer = new UInt8Array(content);
+      for (let off in offsets) {
+        buffer[off] = device;
+        buffer[off + 1] = 0;
+        buffer[off + 2] = 0;
+        buffer[off + 3] = 0;
+      }
+    }
+
     try {
       // Request to switch to the next flashable USB port. the reply from the
       // Pico would tell us whether to send or not the uf2 image again.
