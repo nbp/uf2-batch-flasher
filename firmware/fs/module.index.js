@@ -1,20 +1,71 @@
 // import * as jsBinding from 'importmap name';
 
+function Mutex() {
+  return {
+    turn: Promise.resolve(),
+    lock: async function lock() {
+      let turn = this.turn;
+      let unlock;
+      this.turn = new Promise(res => { unlock = res; });
+      await turn;
+      return unlock;
+    }
+  };
+}
+
+// Prevent multiple fetch calls from happening at the same time.
+let fetch_mutex = Mutex();
+
+// Start logging fetch calls if any fetch takes more than this threshold.
+let logging_threshold = 600; // ms
+
+// The Pico might have hard time at replying to multiple requests at the same
+// time, thus we queue requests and execute them one at a time.
+async function queued_fetch(...args) {
+  let queued = performance.now();
+  let unlock = await fetch_mutex.lock();
+  let start = performance.now();
+  let logging_unlock = () => {
+    let qtime = start - queued;
+    let delta = performance.now() - start;
+    if (delta > logging_threshold || qtime > logging_threshold) {
+      console_log(`fetch(${args[0]}) {queued for ${qtime} ms, took ${delta} ms}`);
+    }
+    unlock();
+  };
+  return { fetch: fetch(...args), unlock: logging_unlock };
+}
+
 // Display the output produced by the board and the output produced by this
 // script on the console panel displayed on the page.
 async function update_stdout() {
-  let out = await fetch("/stdout.ssi");
-  out = await out.text();
+  let out, unlock;
+  try {
+    let queue = await queued_fetch("/stdout.ssi");
+    unlock = queue.unlock;
+    out = await queue.fetch;
+    out = await out.text();
+  } finally {
+    unlock();
+  }
+
   let console = document.getElementById("console");
   if (out == "\n") return;
-  let text = out.split('\n').map(line => `pico: ${line}\n`).join("");
+  let time = performance.now() / 1000;
+  let text = out.split('\n').map(line => `(${time}) pico: ${line}\n`).join("");
   console.innerText += text;
 }
 function console_log(...args) {
   let console = document.getElementById("console");
-  console.innerText += "web: " + args.map(a => a.toString()).join(" ") + "\n";
+  let time = performance.now() / 1000;
+  console.innerText += `(${time}) web: ` + args.map(a => a.toString()).join(" ") + "\n";
 }
 
+function sleep(timeout) {
+  return new Promise((resolve, reject) => {
+    setTimeout(resolve, timeout);
+  });
+}
 function asyncTimeout(timeout) {
   return new Promise((resolve, reject) => {
     setTimeout(reject, timeout);
@@ -51,11 +102,18 @@ const USB_DEVICES = 64;
 let last_status = [];
 let wait_for_status = [];
 async function update_status(status) {
-  if (!status) {
-    status = await fetch("/status.json");
-  }
+  let unlock;
+  try {
+    if (!status) {
+      status = await queued_fetch("/status.json");
+    }
 
-  status = await status.json();
+    unlock = status.unlock;
+    status = await status.fetch;
+    status = await status.json();
+  } finally {
+    unlock();
+  }
 
   let dom = document.getElementById("usb_status_list");
   while (dom.firstElementChild) {
@@ -76,6 +134,7 @@ async function update_status(status) {
 
 async function wait_for_usb_status(device, expected_status, timeout, msg) {
   let no_more_checks = false;
+  let status_timer = undefined;
   if (typeof expected_status === "string") {
     expected_status = usb_status.indexOf(expected_status);
   }
@@ -116,6 +175,7 @@ async function wait_for_usb_status(device, expected_status, timeout, msg) {
 
     if (!check_for_expectation(last_status)) {
       wait_for_status.push(check_for_expectation);
+      status_timer = setInterval(update_status, 245, undefined);
     }
   });
 
@@ -128,6 +188,10 @@ async function wait_for_usb_status(device, expected_status, timeout, msg) {
     } else {
       throw new Error(`Unexpected status code: 0x${e.toString(16)}`);
     }
+  } finally {
+    if (status_timer) {
+      clearInterval(status_timer);
+    }
   }
 }
 
@@ -137,7 +201,7 @@ let msc_timeout = 1 * min;
 let flash_timeout = 20 * min;
 
 async function select_device(device, cdc_timeout, msc_timeout) {
-  await update_status(await fetch(`/select.cgi?active_device=${device}`));
+  await update_status(await queued_fetch(`/select.cgi?active_device=${device}`));
 
   if (device >= USB_DEVICES) {
     return;
@@ -200,7 +264,7 @@ function locate_uf2_arm_halt(content) {
   const lh = (pattern >> 8) & 0xff;
   const ll = pattern & 0xff;
 
-  content = new UInt8Array(content);
+  content = new Uint8Array(content);
   let offsets = [];
 
   // UF2 file format is divided in chunks of 512 bytes, with 32 bytes of header
@@ -230,6 +294,10 @@ function locate_uf2_arm_halt(content) {
 
 // content is an array buffer, typed array, blob, json or text.
 async function send_uf2(name, content) {
+  // When sending uf2 content, we want to avoid making too many request as the
+  // flashing pico might already be under pressure.
+  stop_status_watchdog();
+
   // Walk the uf2 content to locate any HALT instruction with a special code to
   // replace it by the index of the device.
   const offsets = locate_uf2_arm_halt(content);
@@ -240,7 +308,7 @@ async function send_uf2(name, content) {
 
     // Patch the content with the device index.
     if (offsets.length) {
-      let buffer = new UInt8Array(content);
+      let buffer = new Uint8Array(content);
       for (let off in offsets) {
         buffer[off] = device;
         buffer[off + 1] = 0;
@@ -258,7 +326,7 @@ async function send_uf2(name, content) {
       // protocol and then throttled by LwIP based on how fast we can forward
       // the content to the USB device.
       console_log(`Flashing content: ${content.byteLength} bytes to flash.`);
-      await update_status(await fetch("/flash", {
+      await update_status(await queued_fetch("/flash", {
         method: "POST",
         mode: "same-origin",
         cache: "no-cache",
@@ -269,6 +337,10 @@ async function send_uf2(name, content) {
         },
         body: content
       }));
+
+      // Explicitly wait to avoid sending a status request while the memory is
+      // filled with the content of the image to be flashed.
+      await sleep(1000);
 
       // Flashing the device takes time, and the previous request only completes
       // once the POST buffer is full, which only implies that everything has
@@ -286,6 +358,9 @@ async function send_uf2(name, content) {
   // Unpower all USB devices after having iterated over all of them. Otherwise
   // the last USB port might remain connected.
   select_device(USB_DEVICES, 0, 0);
+
+  // Restart the periodic timer which is asking for status updates.
+  start_status_watchdog();
 }
 
 let flash_all_click_handler = null;
@@ -348,6 +423,13 @@ function dropDragOver(ev) {
 let status_timer = null;
 let stdout_timer = null;
 
+function start_status_watchdog() {
+  status_timer = setInterval(update_status, 245, undefined);
+}
+function stop_status_watchdog() {
+  clearInterval(status_timer);
+}
+
 // Hook the current script and attach it to the DOM.
 function setup() {
   // Register an action when new files are selected.
@@ -358,7 +440,7 @@ function setup() {
   // Poll the Pico every 500ms to collect new status information about the USB
   // devices. This is useful to unlock promises which are waiting for changes in
   // the state of USB devices.
-  status_timer = setInterval(update_status, 245, undefined);
+  start_status_watchdog();
   stdout_timer = setInterval(update_stdout, 1000, undefined);
 }
 
@@ -367,7 +449,7 @@ function unsetup() {
   dropzone.removeEventListener("drop", dropFilesHandler);
   dropzone.removeEventListener("dragover", dropDragOver);
 
-  clearInterval(status_timer);
+  stop_status_watchdog();
   clearInterval(stdout_timer);
 
   let flashAll = document.getElementById("flash_all");
