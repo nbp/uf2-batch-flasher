@@ -10,6 +10,7 @@
 #include "pico/bootrom.h" // reset_usb_boot
 
 #include "usb_host.h"
+#include "tcp_server.h"
 #include "web_server.h"
 #include "pipe.h"
 #include "stdio_web.h"
@@ -37,6 +38,17 @@ int main() {
   // Setup USB devices.
   usb_host_setup();
 
+#if defined(USE_TCP_SERVER)
+  // Setup the TCP server.
+  if (!tcp_server_setup()) {
+    reset_usb_boot(0, 0);
+    return 1;
+  }
+
+  // Core 0 main loop.
+  printf("Starting TCP server loop.\n");
+  tcp_server_loop();
+#else
   // Setup the Web server.
   if (!web_server_setup()) {
     reset_usb_boot(0, 0);
@@ -46,6 +58,7 @@ int main() {
   // Core 0 main loop.
   printf("Starting Web server loop.\n");
   web_server_loop();
+#endif
 
   // Use the on-board LED to report the data status of the USB line.
   led_init();

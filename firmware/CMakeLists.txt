@@ -55,22 +55,25 @@ pico_sdk_init()
 set(PICO_PIO_USB_PATH $ENV{PICO_SDK_PATH}/lib/tinyusb/hw/mcu/raspberry_pi/Pico-PIO-USB/)
 check_and_add_pico_pio_usb_support()
 
-# Use a script to pack every file under the commander/fs directory as the root
-# of the Website served.
-message("Generate WebRoot to embed in the binary.")
+option(USE_WEB_SERVER "Use the HTTP server instead of the TCP server" OFF)
 
-# Replaced the LwIP file by our local one in order to add the proper mime type
-# for JavaScript files.
-#set(MAKE_FS_DATA_SCRIPT $ENV{PICO_SDK_PATH}/lib/lwip/src/apps/http/makefsdata/makefsdata)
-set(MAKE_FS_DATA_SCRIPT ${CMAKE_CURRENT_LIST_DIR}/makefsdata)
+if (USE_WEB_SERVER)
+  # Use a script to pack every file under the commander/fs directory as the root
+  # of the Website served.
+  message("Generate WebRoot to embed in the binary.")
 
-execute_process(COMMAND
-  perl ${MAKE_FS_DATA_SCRIPT}
-  WORKING_DIRECTORY ${CMAKE_CURRENT_LIST_DIR}
-  ECHO_OUTPUT_VARIABLE
-  ECHO_ERROR_VARIABLE
-)
-file(RENAME fsdata.c _webroot.c)
+  # Replaced the LwIP file by our local one in order to add the proper mime type
+  # for JavaScript files.
+  #set(MAKE_FS_DATA_SCRIPT $ENV{PICO_SDK_PATH}/lib/lwip/src/apps/http/makefsdata/makefsdata)
+  set(MAKE_FS_DATA_SCRIPT ${CMAKE_CURRENT_LIST_DIR}/makefsdata)
+  execute_process(COMMAND
+    perl ${MAKE_FS_DATA_SCRIPT}
+    WORKING_DIRECTORY ${CMAKE_CURRENT_LIST_DIR}
+    ECHO_OUTPUT_VARIABLE
+    ECHO_ERROR_VARIABLE
+  )
+  file(RENAME fsdata.c _webroot.c)
+endif()
 
 add_executable(uf2-batch-flasher)
 
@@ -85,7 +88,6 @@ target_sources(uf2-batch-flasher PRIVATE
   input.c
   panic.c
   usb_host.c
-  web_server.c
   pipe.c
 
   # As the main interface is the web interface, dump the stdout to a web page
@@ -138,6 +140,24 @@ target_link_libraries(uf2-batch-flasher
 #  hardware_dma
   hardware_watchdog
 )
+
+if (USE_WEB_SERVER)
+  target_sources(uf2-batch-flasher PRIVATE
+    web_server.c
+  )
+
+  target_link_libraries(uf2-batch-flasher PRIVATE
+    # Used to implement an HTTP server.
+    pico_lwip_http
+  )
+else()
+  target_sources(uf2-batch-flasher PRIVATE
+    tcp_server.c
+  )
+  target_compile_definitions(uf2-batch-flasher PRIVATE
+    USE_TCP_SERVER=1
+  )
+endif()
 
 # Enable stdin/stdout over UART.
 pico_enable_stdio_usb(uf2-batch-flasher 0)

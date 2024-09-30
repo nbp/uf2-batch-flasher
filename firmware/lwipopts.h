@@ -68,25 +68,26 @@
 #define DHCP_DOES_ARP_CHECK         0
 #define LWIP_DHCP_DOES_ACD_CHECK    0
 
+#if !defined(USE_TCP_SERVER)
 // ------ Enable HTTP server.
-#define LWIP_HTTPD 1
+# define LWIP_HTTPD 1
 
 // ------ Producing dynamically generated content.
-#define LWIP_HTTPD_SSI 1
+# define LWIP_HTTPD_SSI 1
 
 // When replacing Tags such as /* # tag */, do not include the tag in the
 // generated output. One of the reason being that json does not allow comments.
-#define LWIP_HTTPD_SSI_INCLUDE_TAG   0
+# define LWIP_HTTPD_SSI_INCLUDE_TAG   0
 
 // Allow tags to be replaced by content which can be as big as ...
-#define LWIP_HTTPD_MAX_TAG_INSERT_LEN 8192
+# define LWIP_HTTPD_MAX_TAG_INSERT_LEN 8192
 
 // ------ Process query dynamically.
-#define LWIP_HTTPD_CGI 1
+# define LWIP_HTTPD_CGI 1
 
 // In order to send binary data, we rely on the POST method instead of GET to
 // send the bytes.
-#define LWIP_HTTPD_SUPPORT_POST 1
+# define LWIP_HTTPD_SUPPORT_POST 1
 // Maximum length of the filename to send as a response to a POST request.
 // #define LWIP_HTTPD_POST_MAX_RESPONSE_URI_LEN 63
 
@@ -108,10 +109,11 @@
 
 // ------ Reply with statically listed files.
 // use generated fsdata
-#define HTTPD_FSDATA_FILE "_webroot.c"
+# define HTTPD_FSDATA_FILE "_webroot.c"
 
 // Generate HTML headers as part of makefsdata instead of generating them on
 // demand, in order to support proper content type for json files.
-#define LWIP_HTTPD_DYNAMIC_HEADERS   0
+#define LWIP_HTTPD_DYNAMIC_HEADERS 0
+#endif // !defined(USE_TCP_SERVER)
 
 #endif // LWIP_OPTS_H

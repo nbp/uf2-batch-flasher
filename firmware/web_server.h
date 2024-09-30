@@ -1,4 +1,4 @@
-#ifndef WEB_SERVER_H
+#if !defined(WEB_SERVER_H) && !defined(USE_TCP_SERVER)
 #define WEB_SERVER_H
 
 #include <stdbool.h>

@@ -1,3 +1,5 @@
+#if !defined(USE_TCP_SERVER)
+
 #include "hardware/watchdog.h"  // watchdog_reboot
 #include "pico/bootrom.h" // reset_usb_boot
 
@@ -325,3 +327,5 @@ void web_server_loop() {
 void web_server_stop() {
   cyw43_arch_deinit();
 }
+
+#endif // !defined(USE_TCP_SERVER)

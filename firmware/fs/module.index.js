@@ -292,6 +292,69 @@ function locate_uf2_arm_halt(content) {
   return offsets;
 }
 
+async function send_uf2_to(device, name, content, offsets, opts) {
+  if (opts?.handle_status) {
+    stop_status_watchdog();
+  }
+
+  // Patch the content with the device index.
+  if (offsets.length) {
+    let buffer = new Uint8Array(content);
+    for (let off in offsets) {
+      buffer[off] = device;
+      buffer[off + 1] = 0;
+      buffer[off + 2] = 0;
+      buffer[off + 3] = 0;
+    }
+  }
+
+  try {
+    // Request to switch to the next flashable USB port. the reply from the
+    // Pico would tell us whether to send or not the uf2 image again.
+    await select_device(device, cdc_timeout, msc_timeout);
+
+    // Make a single request which would be split into multiple by TCP
+    // protocol and then throttled by LwIP based on how fast we can forward
+    // the content to the USB device.
+    console_log(`Flashing content: ${content.byteLength} bytes to flash.`);
+    await update_status(await queued_fetch("/flash", {
+      method: "POST",
+      mode: "same-origin",
+      cache: "no-cache",
+      credentials: "same-origin",
+      headers: {
+        "Content-Type": "application/uf2",
+        "Content-Length": content.byteLength,
+      },
+      body: content
+    }));
+
+    // Explicitly wait to avoid sending a status request while the memory is
+    // filled with the content of the image to be flashed.
+    await sleep(1000);
+
+    // Flashing the device takes time, and the previous request only completes
+    // once the POST buffer is full, which only implies that everything has
+    // been queued, not flashed. Wait 500ms at most before assuming that an
+    // unreported error occured.
+    let wait_flash_complete = wait_for_usb_status(
+      device, "DEVICE_FLASH_COMPLETE", flash_timeout,
+      "Timeout while waiting for flash complete");
+    await wait_flash_complete;
+  } catch(e) {
+    console_log(`Unable to flash device at USB port ${device}:\n${e}`);
+  } finally {
+    if (opts?.unselect) {
+      // Unpower all USB devices after having iterated over all of them. Otherwise
+      // the last USB port might remain connected.
+      select_device(USB_DEVICES, 0, 0);
+    }
+    if (opts?.handle_status) {
+      start_status_watchdog();
+    }
+  }
+}
+
 // content is an array buffer, typed array, blob, json or text.
 async function send_uf2(name, content) {
   // When sending uf2 content, we want to avoid making too many request as the
@@ -305,59 +368,8 @@ async function send_uf2(name, content) {
   await clear_status();
 
   for (let device = range_min; device < range_max; device++) {
-
-    // Patch the content with the device index.
-    if (offsets.length) {
-      let buffer = new Uint8Array(content);
-      for (let off in offsets) {
-        buffer[off] = device;
-        buffer[off + 1] = 0;
-        buffer[off + 2] = 0;
-        buffer[off + 3] = 0;
-      }
-    }
-
-    try {
-      // Request to switch to the next flashable USB port. the reply from the
-      // Pico would tell us whether to send or not the uf2 image again.
-      await select_device(device, cdc_timeout, msc_timeout);
-
-      // Make a single request which would be split into multiple by TCP
-      // protocol and then throttled by LwIP based on how fast we can forward
-      // the content to the USB device.
-      console_log(`Flashing content: ${content.byteLength} bytes to flash.`);
-      await update_status(await queued_fetch("/flash", {
-        method: "POST",
-        mode: "same-origin",
-        cache: "no-cache",
-        credentials: "same-origin",
-        headers: {
-          "Content-Type": "application/uf2",
-          "Content-Length": content.byteLength,
-        },
-        body: content
-      }));
-
-      // Explicitly wait to avoid sending a status request while the memory is
-      // filled with the content of the image to be flashed.
-      await sleep(1000);
-
-      // Flashing the device takes time, and the previous request only completes
-      // once the POST buffer is full, which only implies that everything has
-      // been queued, not flashed. Wait 500ms at most before assuming that an
-      // unreported error occured.
-      let wait_flash_complete = wait_for_usb_status(
-        device, "DEVICE_FLASH_COMPLETE", flash_timeout,
-        "Timeout while waiting for flash complete");
-      await wait_flash_complete;
-    } catch(e) {
-      console_log(`Unable to flash device at USB port ${device}:\n${e}`);
-    }
+    await send_uf2_to(device, name, content, offsets, {});
   }
-
-  // Unpower all USB devices after having iterated over all of them. Otherwise
-  // the last USB port might remain connected.
-  select_device(USB_DEVICES, 0, 0);
 
   // Restart the periodic timer which is asking for status updates.
   start_status_watchdog();

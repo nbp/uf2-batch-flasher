@@ -31,6 +31,7 @@
 #include "diskio.h"
 
 // Collect references to callback tasks.
+#include "tcp_server.h"
 #include "web_server.h"
 
 // Handle queuing tasks across CPU cores managing either USB host or the Web
@@ -235,6 +236,7 @@ void select_device(size_t device) {
     enable_usb_power();
     sleep_ms(1);
     enable_usb_data();
+    printf("Select USB device: %d\n", active_device);
   }
 }
 
@@ -461,16 +463,15 @@ bool inquiry_complete_cb(uint8_t dev_addr,
   return true;
 }
 
-static uint8_t write_drive_num = 0;
 static size_t written_bytes = 0;
 
-void open_file(void* arg)
+void open_file(void* net_arg)
 {
   // TODO: We should somehow get the filename across the web server to here, in
   // order to flash files with the proper name. For example, we do not want to
   // be flashing *.py files as *.uf2 files.
-  uint8_t const drive_num = (uint8_t) (uintptr_t) arg;
-  write_drive_num = drive_num;
+  void *usb_arg = get_postmsg_usb_info(net_arg);
+  uint8_t const drive_num = (uint8_t) (uintptr_t) usb_arg;
   written_bytes = 0;
 
   char file_path[13] = "0:/image.uf2";
@@ -479,9 +480,11 @@ void open_file(void* arg)
   if (f_open(&file[drive_num], file_path, FA_WRITE | FA_CREATE_ALWAYS) != FR_OK) {
     printf("USB: open_file(%u): failure.\n", (size_t) drive_num);
     report_status(DEVICE_ERROR_FLASH_OPEN);
-    queue_web_task(&write_error, arg);
+    queue_web_task(&write_error, net_arg);
     return;
   }
+
+  queue_web_task(&report_file_opened, net_arg);
 }
 
 // This function writes content provided by the HTTPD stack as a single chunk to
@@ -491,15 +494,16 @@ void open_file(void* arg)
 // content manipulated by the device, and also gives some time to the device to
 // write this content back to the flash either by sleeping or waiting on f_sync
 // completion.
-void write_file_content(void* arg)
+void write_file_content(void* net_arg)
 {
-  uint8_t const drive_num = write_drive_num;
-  uint8_t* buf = get_postmsg_buffer(arg);
-  size_t len = get_postmsg_length(arg);
+  void *usb_arg = get_postmsg_usb_info(net_arg);
+  uint8_t const drive_num = (uint8_t) (uintptr_t) usb_arg;
+  uint8_t* buf = get_postmsg_buffer(net_arg);
+  size_t len = get_postmsg_length(net_arg);
   UINT count = len;
 
   if (is_status_error()) {
-    queue_web_task(&free_postmsg, arg);
+    queue_web_task(&free_postmsg, net_arg);
     return;
   }
 
@@ -511,8 +515,11 @@ void write_file_content(void* arg)
   // bytes of UF2 data which will carry 256 bytes of useful payload to be
   // written at once, per flash sector of 4k.
   //
-  // Thus every 8k of transmitted content, a write back will happen on the the
+  // Thus every 8k of transmitted content, a write back will happen on the
   // flash of the raspberry Pi Pico devices connected to the UF2 Batch flasher.
+  //
+  // To avoid triggering a flush of incomplete pages from the buffered f_write
+  // calls. We simply split our calls to f_write based on the chunk_size.
   const size_t chunk_size = 8 * 1024;
   size_t written_next = written_bytes + count;
   size_t chunk_overflow = written_next & (chunk_size - 1);
@@ -529,9 +536,9 @@ void write_file_content(void* arg)
     FRESULT res = f_write(&file[drive_num], &buf[offset], align_write, &align_write);
     if (res != FR_OK) {
       printf("USB: write_file_content: write chunk failure (err = %d).\n", res);
-      queue_web_task(&free_postmsg, arg);
+      queue_web_task(&free_postmsg, net_arg);
       report_status(DEVICE_ERROR_FLASH_WRITE);
-      queue_web_task(&write_error, arg);
+      queue_web_task(&write_error, net_arg);
       return;
     }
     written_bytes += align_write;
@@ -548,8 +555,9 @@ void write_file_content(void* arg)
     res = f_sync(&file[drive_num]);
     if (res != FR_OK) {
       printf("USB: write_file_content: sync failure (err = %d).\n", res);
+      queue_web_task(&free_postmsg, net_arg);
       report_status(DEVICE_ERROR_FLASH_WRITE);
-      queue_web_task(&write_error, arg);
+      queue_web_task(&write_error, net_arg);
       return;
     }
 # endif
@@ -561,16 +569,17 @@ void write_file_content(void* arg)
     FRESULT res = f_write(&file[drive_num], &buf[offset], count, &count);
     if (res != FR_OK) {
       printf("USB: write_file_content: write overflow failure (err = %d).\n", res);
-      queue_web_task(&free_postmsg, arg);
+      queue_web_task(&free_postmsg, net_arg);
       report_status(DEVICE_ERROR_FLASH_WRITE);
-      queue_web_task(&write_error, arg);
+      queue_web_task(&write_error, net_arg);
       return;
     }
     written_bytes += count;
   }
 
-  queue_web_task(&free_postmsg, arg);
+  queue_web_task(&free_postmsg, net_arg);
   LOG_DEBUG("USB: write_file_content: %u bytes (%u total)\n", len, written_bytes);
+  printf("USB: write_file_content: %u bytes (%u total)\n", len, written_bytes);
 }
 
 // This function takes over the USB core, and move content from the pipe to the
@@ -637,19 +646,20 @@ void stream_file_content(void* arg)
   printf("USB: stream_file_content: %u bytes written.\n", total);
 }
 
-void close_file(void* arg)
+void close_file(void* net_arg)
 {
   if (is_status_error()) {
     return;
   }
 
-  uint8_t const drive_num = (uint8_t) (uintptr_t) arg;
+  void *usb_arg = get_postmsg_usb_info(net_arg);
+  uint8_t const drive_num = (uint8_t) (uintptr_t) usb_arg;
 
   LOG_DEBUG("f_sync:\n");
   if (f_sync(&file[drive_num]) != FR_OK) {
     printf("USB: close_file: sync failure.\n");
     report_status(DEVICE_ERROR_FLASH_CLOSE);
-    queue_web_task(&write_error, arg);
+    queue_web_task(&write_error, net_arg);
     return;
   }
 
@@ -657,7 +667,7 @@ void close_file(void* arg)
   if (f_close(&file[drive_num]) != FR_OK) {
     printf("USB: close_file: close failure.\n");
     report_status(DEVICE_ERROR_FLASH_CLOSE);
-    queue_web_task(&write_error, arg);
+    queue_web_task(&write_error, net_arg);
     return;
   }
 
@@ -667,6 +677,7 @@ void close_file(void* arg)
   // Once flashing is complete, the device might automatically reboot, and
   // listen to CDC once more.
   report_status(DEVICE_FLASH_COMPLETE);
+  queue_web_task(&report_file_closed, net_arg);
 }
 
 // The file system is mounted.
