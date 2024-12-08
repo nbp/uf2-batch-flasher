@@ -214,6 +214,7 @@ def recv_flash_end(data):
     flash_end_msg.received(None)
     return 1
 
+
 def tcp_recv(tcp, data):
     msg_id = data[0]
     if msg_id == ServerMsg.UPDATE_STATUS.value:
@@ -229,12 +230,13 @@ def tcp_recv(tcp, data):
     elif msg_id == ServerMsg.FLASH_END.value:
         return recv_flash_end(data)
     elif msg_id == ServerMsg.FLASH_ERROR.value:
-        print(f"tcp: pico: An error occured while flashing the device.\n")
+        print("tcp: pico: An error occured while flashing the device.\n")
     elif msg_id == ServerMsg.DECODE_FAILURE.value:
-        print(f"tcp: pico: Unexpected message id\n")
+        print("tcp: pico: Unexpected message id\n")
     else:
         raise Exception(f"Unexpect message: {data.hex()}")
     return 1
+
 
 async def tcp_fetch(tcp):
     # while not tcp.writer.is_closing():
@@ -258,6 +260,7 @@ async def tcp_fetch(tcp):
                 raise
     print("End of server stream")
 
+
 # Function to fetch stdout and display it
 async def update_stdout(tcp, flush):
     text = b""
@@ -267,7 +270,6 @@ async def update_stdout(tcp, flush):
             await send_request_stdout(tcp)
         text += await prefetch
 
-        prefixed = ""
         lines = text.split(b'\n')
         # If the text ends with a new line, then text would be empty, otherwise
         # it would be non-empty and we would keep cycling without sleeping to
@@ -283,6 +285,7 @@ async def update_stdout(tcp, flush):
                 flush.set_result(True)
                 flush = None
             await asyncio.sleep(0.5)
+
 
 def check_for_expectation(status, expected_status):
     # Raise an exception in case of error.
@@ -300,6 +303,7 @@ def check_for_expectation(status, expected_status):
         return (status & 0x0f) >= expected_status
     return False
 
+
 def status_name(code):
     text = usb_status[code & 0x1f]
     if code & 0x10:
@@ -313,6 +317,8 @@ def status_name(code):
     return text
 
 all_status = []
+
+
 async def wait_for_usb_status(tcp, device, expected_status, timeout, msg):
     print(f"USB {device}: Waiting for status {expected_status}")
     global all_status
@@ -352,6 +358,7 @@ async def wait_for_usb_status(tcp, device, expected_status, timeout, msg):
     except TimeoutError:
         raise Exception(msg)
 
+
 async def select_device(tcp, device, cdc_timeout = 0, msc_timeout = 0):
     print(f"Select device {device}")
     await send_select_device(tcp, device)
@@ -369,9 +376,11 @@ async def select_device(tcp, device, cdc_timeout = 0, msc_timeout = 0):
     await wait_for_usb_status(tcp, device, "DEVICE_FLASH_REQUEST", msc_timeout,
                               "Timeout while waiting for flash request")
 
+
 async def clear_status(tcp):
     await send_select_device(tcp, -1)
     await wait_for_usb_status(tcp, 0, "DEVICE_UNKNOWN", 1 * minute, "Timeout while clearing USB status")
+
 
 def locate_uf2_arm_halt(content):
     # ARM HLT instruction with a 16-bit payload.
@@ -402,10 +411,8 @@ def locate_uf2_arm_halt(content):
         # Scan through the data section of the UF2 chunk (skip footer too)
         while (off % chunk_size) < (chunk_size - footer_size):
             # Check if the 4 bytes match the little-endian encoded pattern
-            if (content[off] == ll and
-                content[off + 1] == lh and
-                content[off + 2] == hl and
-                content[off + 3] == hh):
+            if content[off] == ll and content[off + 1] == lh and \
+               content[off + 2] == hl and content[off + 3] == hh:
                 # Store the offset where the pattern is found
                 offsets.append(off)
 
@@ -416,6 +423,7 @@ def locate_uf2_arm_halt(content):
         off += footer_size
 
     return offsets
+
 
 async def send_uf2_to(tcp, name, device, content, offsets):
     # Patch the content with the device index.
@@ -482,6 +490,7 @@ async def send_uf2_to(tcp, name, device, content, offsets):
     except Exception as e:
         print(f"Unable to flash device at USB port {device}:\n{e}")
 
+
 async def send_uf2(tcp, name, content, args):
     # Walk the uf2 content to locate any HALT instruction with a special code to
     # replace it by the index of the device.
@@ -506,10 +515,12 @@ async def send_uf2(tcp, name, content, args):
 
     await select_device(tcp, USB_DEVICES)
 
+
 class TCPConn:
     reader = None
     writer = None
-    
+
+
 async def main(args):
     print("Connecting to the UF2 Batch Flasher")
     reader, writer = await asyncio.open_connection(args.host, args.port)
@@ -556,13 +567,20 @@ async def main(args):
         pass
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description="Flash a UF2 file to a USB device.")
-    parser.add_argument('--single', type=int, help='Flash a single device')
-    parser.add_argument('--start-with', type=int, help='Specify the first device to flash')
-    parser.add_argument('--end-with', type=int, help='Specify the last device to flash')
-    parser.add_argument('--host', type=str, default="192.168.1.52", help='Host of the UF2 Batch Flasher')
-    parser.add_argument('--port', type=int, default=5656, help='Port of the UF2 batch flasher')
-    parser.add_argument('--reboot', type=bool, default=False, help='Reboot once the operations are done')
+    parser = argparse.ArgumentParser(
+        description="Flash a UF2 file to a USB device.")
+    parser.add_argument('--single', type=int,
+                        help='Flash a single device')
+    parser.add_argument('--start-with', type=int,
+                        help='Specify the first device to flash')
+    parser.add_argument('--end-with', type=int,
+                        help='Specify the last device to flash')
+    parser.add_argument('--host', type=str, default="192.168.1.52",
+                        help='Host of the UF2 Batch Flasher')
+    parser.add_argument('--port', type=int, default=5656,
+                        help='Port of the UF2 batch flasher')
+    parser.add_argument('--reboot', type=bool, default=False,
+                        help='Reboot once the operations are done')
     parser.add_argument('uf2_file', help='Path to the UF2 file to flash')
     args = parser.parse_args()
 

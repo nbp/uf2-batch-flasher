@@ -42,7 +42,7 @@ mkShell {
       sudo minicom -D /dev/ttyACM0 -b 115200
     }
     start_openocd() {
-      sudo openocd -f interface/cmsis-dap.cfg -c "adapter speed 12000" -f target/rp2040.cfg -s tcl
+      sudo openocd -f interface/cmsis-dap.cfg -f target/rp2040.cfg -c "adapter speed 5000" -s tcl
     }
     start_gdb_core0() {
       gdb --exec=_build/firmware/uf2-batch-flasher.elf -ex "target extended-remote :3333"

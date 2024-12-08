@@ -30,6 +30,19 @@ in
   # and board design.
   uf2-batch-flasher-board = null;
 
+  # CLI to flash a program to multiple boards using the command line.
+  uf2bf = prev.writers.writePython3Bin "uf2bf" {
+      libraries = [];
+      flakeIgnore = [
+        "E226" # missing whitespaces.
+        "E251" # unexpected whitespaces.
+        "E265" # Shebang bang bang!
+        "E302" "E305" # Expect 2 blank lines
+        "E501" # line too long
+        "W293" # blank line contains whitespaces
+      ];
+  } (builtins.readFile ./firmware/cli/uf2bf.py);
+
   # trivial builder
   inherit staticSubmodules;
 
