@@ -81,6 +81,7 @@ add_executable(uf2-batch-flasher)
 target_compile_definitions(uf2-batch-flasher PRIVATE
   WIFI_SSID=\"${WIFI_SSID}\"
   WIFI_PASSWORD=\"${WIFI_PASSWORD}\"
+  CYW43_HOST_NAME\"uf2-batch-flasher\"
 )
 
 target_sources(uf2-batch-flasher PRIVATE
