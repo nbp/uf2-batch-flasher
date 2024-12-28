@@ -548,7 +548,7 @@ async def main(args):
 
     if args.reboot:
         print("Send soft-reboot command")
-        send_reboot_soft(tcp)
+        await send_reboot_soft(tcp)
 
     print("Closing the connection")
     writer.close()
@@ -579,7 +579,7 @@ if __name__ == '__main__':
                         help='Host of the UF2 Batch Flasher')
     parser.add_argument('--port', type=int, default=5656,
                         help='Port of the UF2 batch flasher')
-    parser.add_argument('--reboot', type=bool, default=False,
+    parser.add_argument('--reboot', action='store_true',
                         help='Reboot once the operations are done')
     parser.add_argument('uf2_file', help='Path to the UF2 file to flash')
     args = parser.parse_args()
